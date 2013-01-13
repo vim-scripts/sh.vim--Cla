@@ -6,7 +6,6 @@ Indent levels at case labels keep the next line in the case line.
 Or it can indenting using default shiftwidth. Please set the next line to vimrc.
 let g:sh_indent_case_labels = 1
 
-When you did it re-indenting, indent levels of inside here document will be kept.
+Consideration is kept for indent levels of inside the here document, when it is re-indent.
 When here document finished, indent levels will be returned.
 Also, indent levels of IFS is similar.
-

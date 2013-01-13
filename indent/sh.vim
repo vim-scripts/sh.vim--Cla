@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2013-01-06 00:34:51+09 $
-"                   $Revision: 1.7 $
+" Id:               $Date: 2013-01-13 23:42:58+09 $
+"                   $Revision: 1.14 $
 
 
 if exists("b:did_indent")
@@ -28,16 +28,21 @@ function GetShIndent()
     return 0
   endif
 
-  let ind = indent(lnum)
+  if exists("s:tabstop")
+    let &tabstop = s:tabstop
+    unlet s:tabstop
+  endif
   let line = getline(lnum)
-  let pnum = prevnonblank(lnum - 1)
-  let pline = getline(pnum)
+  let [line, lnum] = s:SkipCommentLine(line, lnum, 0)
+  let [pline, pnum] = s:SkipCommentLine(line, lnum, 1)
+  let ind = indent(lnum)
   let cline = getline(v:lnum)
+  let cind = indent(v:lnum)
 
   let ind = s:MorePrevLineIndent(line, pline, pnum, ind)
-  let ind = s:PrevLineIndent(line, lnum, pline, pnum, ind)
-  let ind = s:CurrentLineIndent(cline, ind)
-  let ind = s:InsideHereDocIndent(ind)
+  let ind = s:PrevLineIndent(line, lnum, pline, ind)
+  let ind = s:CurrentLineIndent(cline, ind, cind)
+  let ind = s:InsideHereDocIndent(cline, ind, cind)
 
   return ind
 endfunction
@@ -49,42 +54,42 @@ function s:MorePrevLineIndent(line, pline, pnum, ind)
   elseif a:pline =~ '\\$' && a:line !~ '\\$'
     let ind = ind - &sw
   elseif a:pline =~ '^\s*IFS=\%(\%o47\|"\)' && a:pline !~ 'IFS=\(\%o47\|"\).*\1'
-    let ind = indent(a:pnum)
+    let ind = s:EndedIfsLineIndent(a:pline, a:pnum, ind)
   endif
 
   return ind
 endfunction
 
-function s:PrevLineIndent(line, lnum, pline, pnum, ind)
+function s:PrevLineIndent(line, lnum, pline, ind)
   let ind = a:ind
   if a:line =~ '^\s*\%(if\|then\|do\|else\|elif\|while\|until\|for\)\>'
         \ && a:line !~ '\%(fi\|done\)\>\s*\%(#.*\)\=$'
-        \ || (a:line =~ '^\s*\<\k\+\>\s*()\s*{' || a:line =~ '^\s*{')
+        \ || (a:line =~ '^\s*\<\h\w*\>\s*()\s*{' || a:line =~ '^\s*{')
         \ && a:line !~ '}\s*\%(#.*\)\=$'
-        \ || (a:line =~ '{\s*\%(#.*\)\=$' || a:line =~ '|\s*while\>')
-        \ && a:line !~ '^\s*#'
+        \ || a:line =~ '{\s*\%(#.*\)\=$'
+        \ || a:line =~ '|\s*\%(while\|until\)\>'
     let ind = ind + &sw
   elseif a:line =~ '^\s*case\>' && a:line !~ '\<esac\>'
     let ind = s:PrevLineCaseIndent(ind)
-  elseif a:line =~ '^\s*[^#(]*[^(]\+\s*)\s*\%(#.*\)\=$'
-    let pline = s:SkipCommentLine(a:pline, a:pnum)
-    if pline =~ '^\s*case\>' || pline =~ ';;\s*\%(#.*\)\=$'
-      let ind = ind + &sw
-    endif
-  elseif a:line =~ ';;\s*\%(#.*\)\=$' && a:line !~ '^\s*[^#(]*[^(]\+\s*)'
+  elseif a:line =~ '^\s*[^(]\+\s*)\s*\%(#.*\)\=$'
+        \ && (a:pline =~ '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
+    let ind = ind + &sw
+  elseif a:line =~ ';;\s*\%(#.*\)\=$' && a:line !~ '^\s*[^(]\+\s*)'
     let ind = ind - &sw
   elseif a:line =~ '^\s*IFS=\%(\%o47\|"\)' && a:line !~ 'IFS=\(\%o47\|"\).*\1'
     let ind = indent(v:lnum)
+  elseif a:line =~ '^\s*IFS='
+    let ind = s:EndedIfsLineIndent(a:line, a:lnum, ind)
   elseif a:line =~ '^\t*[A-Za-z0-9*-/!%:=?@\[\]^_{}~]\+$'
         \ && a:line !~ '^\t*\%(}\|esac\|echo\|shift\|continue\|break\|exit\)$'
     let [sstr, estr] = s:GetHereDocPairLine1(a:line)
-    let ind = s:ClosePairIndent(sstr, estr, a:lnum, ind)
+    let ind = s:ClosePairIndent(sstr, estr, a:lnum, ind, 1)
   endif
 
   return ind
 endfunction
 
-function s:CurrentLineIndent(cline, ind)
+function s:CurrentLineIndent(cline, ind, cind)
   let ind = a:ind
   if a:cline =~ '^\s*case\>' && a:cline !~ '\<esac\>'
     let lnum = nextnonblank(v:lnum + 1)
@@ -95,19 +100,23 @@ function s:CurrentLineIndent(cline, ind)
         \ || a:cline =~ '^\s*}'
     let ind = ind - &sw
   elseif a:cline =~ '^\s*esac\>'
-    let ind = s:ClosePairIndent('^\s*case\>', '^\s*esac\>', v:lnum, ind)
+    let ind = s:ClosePairIndent('^\s*case\>', '^\s*esac\>', v:lnum, ind, 0)
+  elseif (a:cline =~ '^\s*#' || a:cline =~ '^\s*IFS=' || a:cline =~ '<<[^-]')
+        \ && a:cind == 0
+    let ind = 0
   endif
 
   return ind
 endfunction
 
-function s:InsideHereDocIndent(ind)
+function s:InsideHereDocIndent(cline, ind, cind)
   let ind = a:ind
   let lnum = 0
   let onum = 0
   let save_cursor = getpos(".")
   while search('<<-\=\s*\%("\|\%o47\|\\\)\=[A-Za-z0-9*-/!%:=?@\[\]^_{}~]\+' .
         \ '\%("\|\%o47\)\=', 'bW')
+    let snum = line(".")
     let [sstr, estr] = s:GetHereDocPairLine2()
     let lnum = searchpair(sstr, '', estr, 'nW')
     if lnum >= get(save_cursor, 1) || lnum < 1 || lnum < onum
@@ -116,45 +125,94 @@ function s:InsideHereDocIndent(ind)
     let onum = lnum
   endwhile
   call setpos('.', save_cursor)
-  if lnum >= v:lnum
-    let ind = indent(v:lnum)
+  if snum
+    let sind = indent(snum)
+  endif
+  if lnum > 0
+    let spsum = s:GetMostWidthSpaceLen(a:cline)
+  endif
+  if lnum > v:lnum && spsum >= &sw
+    let [tbind, spind] = s:GetTabAndSpaceSum(a:cline, a:cind, sstr, sind)
+    let s:tabstop = &tabstop
+    let &tabstop = spsum + 1
+    let ind = tbind * &tabstop + spind
+  elseif lnum > v:lnum && spsum < &sw && sstr =~ '<<-'
+    let [tbind, spind] = s:GetTabAndSpaceSum(a:cline, a:cind, sstr, sind)
+    let ind = tbind * &tabstop + spind
+  elseif lnum == v:lnum && sstr =~ '<<-'
+    let ind = sind
+  elseif lnum >= v:lnum
+    let ind = a:cind
   endif
 
   return ind
 endfunction
 
-function s:ClosePairIndent(sstr, estr, lnum, ind)
+function s:EndedIfsLineIndent(line, lnum, ind)
+  let ind = a:ind
+  let [line, lnum] = s:SkipCommentLine(a:line, a:lnum, 1)
+  let [pline, pnum] = s:SkipCommentLine(line, lnum ,1)
+  if lnum > 0
+    let ind = indent(lnum)
+    let ind = s:MorePrevLineIndent(line, pline, pnum, ind)
+    let ind = s:PrevLineIndent(line, lnum, pline, ind)
+  endif
+
+  return ind
+endfunction
+
+function s:ClosePairIndent(sstr, estr, lnum, ind, prev)
   let ind = a:ind
   let save_cursor = getpos(".")
   call cursor(a:lnum, 1)
   let lnum = searchpair(a:sstr, '', a:estr, 'bW')
   call setpos('.', save_cursor)
-  if lnum > 0
+  if lnum > 0 && a:prev
+    let ind = indent(lnum)
+    let line = getline(lnum)
+    let [line, lnum] = s:SkipCommentLine(line, lnum, 1)
+    let [pline, pnum] = s:SkipCommentLine(line, lnum ,1)
+    if lnum > 0
+      let ind = indent(lnum)
+      let ind = s:MorePrevLineIndent(line, pline, pnum, ind)
+      let ind = s:PrevLineIndent(line, lnum, pline, ind)
+    endif
+  elseif lnum > 0
     let ind = indent(lnum)
   endif
 
   return ind
 endfunction
 
-function s:SkipCommentLine(line, lnum)
+function s:SkipCommentLine(line, lnum, prev)
   let line = a:line
   let lnum = a:lnum
   while line =~ '^\s*#'
     let lnum = prevnonblank(lnum - 1)
     let line = getline(lnum)
   endwhile
+  if a:prev
+    let lnum = prevnonblank(lnum - 1)
+    let line = getline(lnum)
+    while line =~ '^\s*#'
+      let lnum = prevnonblank(lnum - 1)
+      let line = getline(lnum)
+    endwhile
+  endif
 
-  return line
+  return [line, lnum]
 endfunction
 
 function s:PrevLineCaseIndent(ind)
   let ind = a:ind
   if exists("g:sh_indent_case_labels") && g:sh_indent_case_labels
     let ind = ind + &sw
-  elseif s:case_labels_ind
+  elseif exists("s:case_labels_ind") && s:case_labels_ind
     let ind = ind + s:case_labels_ind
   endif
-  let s:case_labels_ind = 0
+  if exists("s:case_labels_ind")
+    unlet s:case_labels_ind
+  endif
 
   return ind
 endfunction
@@ -173,16 +231,61 @@ endfunction
 
 function s:GetHereDocPairLine2()
   let line = getline(".")
-  let estr = substitute(line, '^.*<<-\=\s*\%("\|\%o47\|\\\)\=' .
-        \ '\([A-Za-z0-9*-/!%:=?@\[\]^_{}~]\+\)\%("\|\%o47\)\=.*$', '\1', '')
-  let sstr = '<<-\=\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
+  let estr = substitute(line, '^.*<<-\=\s*\%("\|\%o47\|\\\)\=', '', '')
+  let estr = substitute(estr,
+        \ '^\([A-Za-z0-9*-/!%:=?@\[\]^_{}~]\+\)\%("\|\%o47\)\=.*$', '\1', '')
   if line =~ '<<-'
+    let sstr = '<<-\=\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
     let estr = '^\t*\M' . estr . '\m$'
   else
+    let sstr = '<<\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
     let estr = '^\M' . estr . '\m$'
   endif
 
   return [sstr, estr]
+endfunction
+
+function s:GetMostWidthSpaceLen(line)
+  let idx = 0
+  let spsum = 0
+  while 1
+    let idx = stridx(a:line, ' ', idx)
+    if idx < 0
+      break
+    endif
+    let len = matchend(a:line, ' *', idx) - idx
+    if len > spsum
+      let spsum = len
+    endif
+    let idx = idx + len
+  endwhile
+
+  return spsum
+endfunction
+
+function s:GetTabAndSpaceSum(cline, cind, sstr, sind)
+  if a:cline =~ '^\t'
+    let tbind = matchend(a:cline, '\t*', 0)
+  else
+    let tbind = 0
+  endif
+  let spind = a:cind - tbind * &sw
+  if a:sstr =~ '<<-' && a:sind
+    let tbind = a:sind / &sw
+  endif
+
+  return [tbind, spind]
+endfunction
+
+autocmd InsertEnter <buffer> call <SID>UnletVariables()
+function s:UnletVariables()
+  if exists("s:tabstop")
+    let &tabstop = s:tabstop
+    unlet s:tabstop
+  endif
+  if exists("s:case_labels_ind")
+    unlet s:case_labels_ind
+  endif
 endfunction
 
 let &cpo = s:cpo_save
