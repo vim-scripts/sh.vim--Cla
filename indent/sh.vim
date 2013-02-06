@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2013-01-17 02:19:09+09 $
-"                   $Revision: 1.18 $
+" Id:               $Date: 2013-02-06 13:05:40+09 $
+"                   $Revision: 1.21 $
 
 
 if exists("b:did_indent")
@@ -58,7 +58,8 @@ function s:MorePrevLineIndent(line, pline, pnum, ind, cline, cind)
     let ind = ind + &sw
   elseif a:pline =~ '\\$' && a:line !~ '\\$'
     let ind = ind - &sw
-  elseif a:pline =~ '^\s*IFS=\%(\%o47\|"\)' && a:pline !~ 'IFS=\(\%o47\|"\).*\1'
+  elseif a:pline =~# '^\s*IFS=\%(\%o47\|"\)'
+        \ && a:pline !~# 'IFS=\(\%o47\|"\).*\1'
     let ind = s:EndedIfsLineIndent(a:pline, a:pnum, ind, a:cline, a:cind)
   endif
 
@@ -67,32 +68,30 @@ endfunction
 
 function s:PrevLineIndent(line, lnum, pline, ind, cline, cind)
   let ind = a:ind
-  if a:line =~ '^\s*\%(if\|then\|else\|elif\)\>' && a:line !~ ';\s*\<fi\>'
-        \ || (a:line =~ '^\s*\%(do\|while\|until\|for\)\>'
-        \ || a:line =~ '\%(|\|;\)\s*\%(while\|until\)\>')
-        \ && a:line !~ ';\s*\<done\>'
-        \ || (a:line =~ '^\s*\<\h\w*\>\s*()\s*{' || a:line =~ '^\s*{')
-        \ && a:line !~ '}\s*\%(#.*\)\=$'
+  if a:line =~# '^\s*\%(if\|then\|else\|elif\)\>' && a:line !~# ';\s*\<fi\>'
+        \ || (a:line =~# '^\s*\%(do\|while\|until\|for\)\>'
+        \ || a:line =~# '\%(|\|;\)\s*\%(while\|until\)\>')
+        \ && a:line !~# ';\s*\<done\>'
         \ || a:line =~ '{\s*\%(#.*\)\=$'
     let ind = ind + &sw
-  elseif a:line =~ '^\s*case\>' && a:line !~ ';;\s*\<esac\>'
+  elseif a:line =~# '^\s*case\>' && a:line !~# ';;\s*\<esac\>'
         \ && a:cline =~ '^\s*#'
     let ind = s:InsideCaseIndent(ind, 0)
-  elseif a:line =~ '^\s*case\>' && a:line !~ ';;\s*\<esac\>'
+  elseif a:line =~# '^\s*case\>' && a:line !~# ';;\s*\<esac\>'
         \ && a:cline !~ '^\s*#'
     let ind = s:InsideCaseIndent(ind, 1)
   elseif a:line =~ '^\s*[^(]\+\s*)\s*\%(#.*\)\=$'
-        \ && (a:pline =~ '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
+        \ && (a:pline =~# '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
     let ind = ind + &sw
   elseif a:line =~ ';;\s*\%(#.*\)\=$' && a:line !~ '^\s*[^(]\+\s*)'
     let ind = ind - &sw
-  elseif a:line =~ '^\s*IFS=\%(\%o47\|"\)' && a:line !~ 'IFS=\(\%o47\|"\).*\1'
+  elseif a:line =~# '^\s*IFS=\%(\%o47\|"\)' && a:line !~# 'IFS=\(\%o47\|"\).*\1'
     let ind = a:cind
-  elseif a:line =~ '^\s*IFS='
+  elseif a:line =~# '^\s*IFS='
     let ind = s:EndedIfsLineIndent(a:line, a:lnum, ind, a:cline, a:cind)
   elseif a:line =~ '^\t*[A-Za-z0-9*-/!%:=?@\[\]^_{}~]\+$'
         \ && a:line
-        \ !~ '^\t*\%(}\|fi\|done\|esac\|echo\|shift\|continue\|break\|exit\)$'
+        \ !~# '^\t*\%(}\|fi\|done\|esac\|echo\|shift\|continue\|break\|exit\)$'
     let [sstr, estr] = s:GetHereDocPairLine1(a:line)
     let ind = s:ClosePairIndent(sstr, estr, a:lnum, ind, a:cline, a:cind, 1)
   endif
@@ -102,18 +101,18 @@ endfunction
 
 function s:CurrentLineIndent(cline, ind, cind)
   let ind = a:ind
-  if a:cline =~ '^\s*case\>' && a:cline !~ ';;\s*\<esac\>'
+  if a:cline =~# '^\s*case\>' && a:cline !~# ';;\s*\<esac\>'
     let lnum = nextnonblank(v:lnum + 1)
     if lnum > 0
       let s:case_labels_ind = indent(lnum) - a:cind
     endif
-  elseif a:cline =~ '^\s*\%(then\|do\|else\|elif\|fi\|done\)\>'
+  elseif a:cline =~# '^\s*\%(then\|do\|else\|elif\|fi\|done\)\>'
         \ || a:cline =~ '^\s*}'
     let ind = ind - &sw
-  elseif a:cline =~ '^\s*esac\>'
-    let ind = s:ClosePairIndent('^\s*case\>', '^\s*esac\>', v:lnum, ind,
+  elseif a:cline =~# '^\s*esac\>'
+    let ind = s:ClosePairIndent('\C^\s*case\>', '\C^\s*esac\>', v:lnum, ind,
           \ a:cline, a:cind, 0)
-  elseif a:cline =~ '^#' || a:cline =~ '^IFS='
+  elseif a:cline =~ '^#' || a:cline =~# '^IFS='
         \ || a:cline =~ '<<[^-]' && a:cind == 0
     let ind = 0
   endif
@@ -137,22 +136,25 @@ function s:InsideHereDocIndent(cline, ind, cind)
     let onum = lnum
   endwhile
   call setpos('.', save_cursor)
-  if snum
+  if snum && !&expandtab
     let sind = indent(snum)
   endif
-  if lnum > 0
+  if lnum > 0 && !&expandtab
     let spsum = s:GetMostWidthSpaceLen(a:cline)
+  elseif lnum > 0 && &expandtab
+    let eind = indent(lnum)
   endif
-  if lnum > v:lnum && spsum >= &sw && !&expandtab
+  if lnum > v:lnum && !&expandtab && spsum >= &sw
     let [tbind, spind] = s:GetTabAndSpaceSum(a:cline, a:cind, sstr, sind)
     let s:tabstop = &tabstop
     let &tabstop = spsum + 1
     let ind = tbind * &tabstop + spind
-  elseif lnum > v:lnum && spsum < &sw && sstr =~ '<<-' && !&expandtab
+  elseif lnum >= v:lnum && !&expandtab && spsum < &sw && sstr =~ '<<-'
     let [tbind, spind] = s:GetTabAndSpaceSum(a:cline, a:cind, sstr, sind)
     let ind = tbind * &tabstop + spind
-  elseif lnum == v:lnum && sstr =~ '<<-' && !&expandtab
-    let ind = sind
+  elseif lnum >= v:lnum && &expandtab && eind && a:cline =~ '^\t'
+    let tbind = matchend(a:cline, '\t*', 0)
+    let ind = a:cind - tbind * &tabstop
   elseif lnum >= v:lnum
     let ind = a:cind
   endif
@@ -231,11 +233,11 @@ endfunction
 
 function s:GetHereDocPairLine1(line)
   let estr = matchstr(a:line, '[A-Za-z0-9*-/!%:=?@\[\]^_{}~]\+$')
-  let sstr = '<<-\=\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
+  let sstr = '\C<<-\=\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
   if a:line =~ '^\t\+'
-    let estr = '^\t*\M' . estr . '\m$'
+    let estr = '\C^\t*\M' . estr . '\m$'
   else
-    let estr = '^\M' . estr . '\m$'
+    let estr = '\C^\M' . estr . '\m$'
   endif
 
   return [sstr, estr]
@@ -247,11 +249,11 @@ function s:GetHereDocPairLine2()
   let estr = substitute(estr,
         \ '^\([A-Za-z0-9*-/!%:=?@\[\]^_{}~]\+\)\%("\|\%o47\)\=.*$', '\1', '')
   if line =~ '<<-'
-    let sstr = '<<-\=\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
-    let estr = '^\t*\M' . estr . '\m$'
+    let sstr = '\C<<-\=\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
+    let estr = '\C^\t*\M' . estr . '\m$'
   else
-    let sstr = '<<\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
-    let estr = '^\M' . estr . '\m$'
+    let sstr = '\C<<\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
+    let estr = '\C^\M' . estr . '\m$'
   endif
 
   return [sstr, estr]
