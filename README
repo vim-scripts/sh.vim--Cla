@@ -1,11 +1,3 @@
 This is a mirror of http://www.vim.org/scripts/script.php?script_id=4373
 
 Indenting for Shell script.
-
-Indent levels at case labels keep the next line in the case line.
-Or it can indenting using default shiftwidth. Please set the next line to vimrc.
-let g:sh_indent_case_labels = 1
-
-Consideration is kept for indent levels of inside the here document, when it is re-indent.
-When here document finished, indent levels will be returned.
-Also, indent levels of IFS is similar.
