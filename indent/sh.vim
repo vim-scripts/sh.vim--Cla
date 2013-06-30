@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2013-06-14 01:46:38+09 $
-"                   $Revision: 1.32 $
+" Id:               $Date: 2013-06-30 18:09:17+09 $
+"                   $Revision: 1.42 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -48,29 +48,25 @@ function GetShIndent()
   endif
 
   let [line, lnum] = s:SkipCommentLine(line, lnum, 0)
-  if line =~# '\\$\|\h\w*=\%o47$'&& cline =~ '^\s*$'
-        \ && !s:InsideSingleQuote(lnum) && s:InsideSingleQuote(v:lnum)
-    return 0
-  elseif s:InsideSingleQuote(lnum) && !s:InsideSingleQuote(v:lnum)
-    let [line, lnum] = s:SkipSingleQuoteLine(line, lnum)
-  elseif !&autoindent && cline =~ '^$' && s:InsideSingleQuote(v:lnum)
+  if !&ai && cline =~ '^$' && s:InsideQuote(v:lnum)
     return indent(lnum)
-  elseif s:InsideSingleQuote(v:lnum)
+  elseif s:InsideQuote(v:lnum)
     return indent(v:lnum)
+  elseif s:InsideQuote(lnum) && !s:InsideQuote(v:lnum)
+    let [line, lnum] = s:SkipQuoteLine(line, lnum)
   endif
 
   let [pline, pnum] = s:SkipCommentLine(line, lnum, 1)
-  if s:InsideSingleQuote(pnum) && !s:InsideSingleQuote(lnum)
-    let [pline, pnum] = s:SkipSingleQuoteLine(pline, pnum)
+  if s:InsideQuote(pnum) && !s:InsideQuote(lnum)
+    let [pline, pnum] = s:SkipQuoteLine(pline, pnum)
   endif
 
-  let ind = indent(lnum)
   let cind = indent(v:lnum)
-
+  let ind = indent(lnum)
   let ind = s:MorePrevLineIndent(pline, line, ind)
   let ind = s:PrevLineIndent(line, lnum, pline, cline, ind)
   let ind = s:CurrentLineIndent(cline, ind, cind)
-  let ind = s:InsideHereDocIndent(cline, ind, cind)
+  let ind = s:InsideHereDocIndent(cline, lnum, ind, cind)
 
   return ind
 endfunction
@@ -88,33 +84,34 @@ endfunction
 
 function s:PrevLineIndent(line, lnum, pline, cline, ind)
   let ind = a:ind
-  let line = a:line
-  if line =~ '\n'
-    if line =~# '\%(\n.*\)\@<=|\s*\%(while\|until\)\>'
-          \ && line !~# ';\s*\<done\>'
-      let ind = ind + &sw
-    endif
-    let line = substitute(line, '\n.*$', '', '')
-  endif
-  if line =~# '^\s*\%(if\|then\|else\|elif\)\>' && line !~# ';\s*\<fi\>'
-        \ || (line =~# '^\s*\%(do\|while\|until\|for\)\>'
-        \ || line =~# '\%(|\|;\)\s*\%(while\|until\)\>'
-        \ || line =~# 'for\>\s\+\h\w*\s\+in\>') && line !~# ';\s*\<done\>'
-        \ || line =~ '^\s*{\s*\%(#.*\)\=$'
-        \ || line =~ '^\h\w*\s*(\s*)\s*{\s*\%(#.*\)\=$'
-        \ || line =~ '\%(&&\|||\)\s*{\s*\%(#.*\)\=$'
-        \ || line =~ '^\s*[^(]\+\s*)\s*\%(#.*\)\=$'
+  if a:line =~# '^\s*\%(if\|then\|else\|elif\)\>' && a:line !~# ';\s*\<fi\>'
+        \ || (a:line =~# '^\s*\%(do\|while\|until\|for\)\>'
+        \ || a:line =~# '\%(\n.*\)\@<!\%(|\|;\)\s*\%(while\|until\)\>'
+        \ || a:line =~# '\%(\n.*\)\@<!\<for\>\s\+\h\w*\s\+in\>')
+        \ && a:line !~# ';\s*\<done\>'
+        \ || a:line =~ '^\s*{\s*\%(#.*\)\=$'
+        \ || a:line =~ '^\s*{\s*\%(#.*\)\=\n'
+        \ || a:line =~ '^\h\w*\s*(\s*)\s*{\s*\%(#.*\)\=$'
+        \ || a:line =~ '^\h\w*\s*(\s*)\s*{\s*\%(#.*\)\=\n'
+        \ || a:line =~ '\%(\n.*\)\@<!\%(&&\|||\)\s*{\s*\%(#.*\)\=$'
+        \ || (a:line =~ '^\s*[^(].*)\s*\%(#.*\)\=$'
+        \ || a:line =~ '^\s*[^(].*)\s*\%(#.*\)\=\n')
         \ && (a:pline =~# '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
     let ind = ind + &sw
-  elseif line =~# '^\s*case\>' && line !~# ';;\s*\<esac\>'
+  elseif a:line =~# '^\s*case\>' && a:line !~# ';;\s*\<esac\>'
     let ind = s:InsideCaseIndent(ind, a:cline)
-  elseif line =~ ';;\s*\%(#.*\)\=$' && line !~ '^\s*[^(]\+\s*)'
+  elseif a:line =~ '\%(\n.*\)\@<!;;\s*\%(#.*\)\=$' && a:line !~ '^\s*[^(].*)'
     let ind = ind - &sw
-  elseif line =~ '^\t*[A-Za-z0-9*-/!%:=?@\[\]^_{}~]\+$'
-        \ && line !~# '\%(}\|fi\|done\|esac\|echo\|shift\|continue' .
-        \ '\|break\|exit\|return\)$'
-    let [sstr, estr] = s:GetHereDocPairLine1(line)
+  elseif (a:line =~ '^\t*\S\+$' || a:line =~ '^\t*\S\+\n')
+        \ && a:line !~ '^\t*}' && a:line !~ '^\h\w*()'
+        \ && a:line !~# '\<\%(fi\|done\|esac\|echo\|shift\|continue' .
+        \ '\|break\|exit\|return\)\>'
+    let [sstr, estr] = s:GetHereDocPairLine1(a:line)
     let ind = s:ClosePairIndent(sstr, estr, a:lnum, a:cline, ind, 1)
+  endif
+  if a:line =~ '\n'
+    let line = substitute(a:line, '^.*\n', '', '')
+    let ind = s:PrevLineIndent(line, a:lnum, a:pline, a:cline, ind)
   endif
 
   return ind
@@ -124,44 +121,33 @@ function s:CurrentLineIndent(cline, ind, cind)
   let ind = a:ind
   if a:cline =~# '^\s*case\>' && a:cline !~# ';;\s*\<esac\>'
         \ && exists("g:sh_indent_case_labels") && !g:sh_indent_case_labels
-    let lnum = nextnonblank(v:lnum + 1)
-    if lnum > 0
-      let s:case_labels_ind = indent(lnum) - a:cind
+    let clind = indent(nextnonblank(v:lnum + 1))
+    if clind > -1 && clind != a:cind && clind - a:cind > -1
+      let s:case_labels_ind = clind - a:cind
     endif
-  elseif a:cline =~# '^\s*\%(then\|do\|else\|elif\|fi\|done\)\>'
-        \ || a:cline =~ '^\s*}'
-    let ind = ind - &sw
+  elseif a:cline =~# '^\s*fi\>' && ind != a:cind
+    let ind = s:ClosePairIndent(
+          \ '\C^\s*if\>', '\C^\s*fi\>', v:lnum, a:cline, ind, 0)
   elseif a:cline =~# '^\s*esac\>'
-        \ && exists("g:sh_indent_case_labels") && g:sh_indent_case_labels
-    let ind = ind - &sw
-  elseif a:cline =~# '^\s*esac\>'
+        \ && exists("g:sh_indent_case_labels") && !g:sh_indent_case_labels
     let ind = s:ClosePairIndent(
           \ '\C^\s*case\>', '\C^\s*esac\>', v:lnum, a:cline, ind, 0)
+  elseif a:cline =~# '^\s*\%(then\|do\|else\|elif\|fi\|done\|esac\)\>'
+        \ || a:cline =~ '^\s*}'
+    let ind = ind - &sw
   elseif a:cline =~ '^#'
-        \ || a:cind == 0 && a:cline =~ '<<[^-]'
-        \ || a:cind == 0 && len(split(a:cline, "'", 1)) % 2 == 0
+        \ || a:cline =~ '<<[^-]' && a:cind == 0
+        \ || a:cline =~ '\\\@<!"\|\\\@<!\%o47' && a:cind == 0
+        \ && get(s:GetInitQuote(a:cline, 1), 1)
     let ind = 0
   endif
 
   return ind
 endfunction
 
-function s:InsideHereDocIndent(cline, ind, cind)
+function s:InsideHereDocIndent(cline, lnum, ind, cind)
   let ind = a:ind
-  let lnum = 0
-  let onum = 0
-  let save_cursor = getpos(".")
-  while search('<<-\=\s*\%("\|\%o47\|\\\)\=[A-Za-z0-9*-/!%:=?@\[\]^_{}~]\+' .
-        \ '\%("\|\%o47\)\=', 'bW')
-    let snum = line(".")
-    let [sstr, estr] = s:GetHereDocPairLine2()
-    let lnum = searchpair(sstr, '', estr, 'nW')
-    if lnum >= get(save_cursor, 1) || lnum < 1 || lnum < onum
-      break
-    endif
-    let onum = lnum
-  endwhile
-  call setpos('.', save_cursor)
+  let [snum, lnum, sstr] = s:InsideHereDoc(v:lnum)
   if snum && !&expandtab
     let sind = indent(snum)
   endif
@@ -183,6 +169,8 @@ function s:InsideHereDocIndent(cline, ind, cind)
     let ind = a:cind - tbind * &tabstop
   elseif lnum >= v:lnum
     let ind = a:cind
+  elseif lnum < 1 && snum
+    let ind = indent(a:lnum)
   endif
 
   return ind
@@ -192,22 +180,18 @@ function s:ClosePairIndent(sstr, estr, lnum, cline, ind, prev)
   let ind = a:ind
   let save_cursor = getpos(".")
   call cursor(a:lnum, 1)
-  let lnum = searchpair(a:sstr, '', a:estr, 'bW')
+  let lnum = searchpair(a:sstr, '', a:estr, 'bW', 's:InsideQuote(line("."))')
   call setpos('.', save_cursor)
   if lnum > 0 && a:prev
-    let ind = indent(lnum)
     let line = getline(lnum)
     let [line, lnum] = s:SkipCommentLine(line, lnum, 1)
-    let [pline, pnum] = s:SkipCommentLine(line, lnum ,1)
-    if lnum > 0
-      if s:InsideSingleQuote(lnum) && !s:InsideSingleQuote(v:lnum)
-        let [line, lnum] = s:SkipSingleQuoteLine(line, lnum)
-        let [pline, pnum] = s:SkipCommentLine(line, lnum ,1)
-      endif
-      let ind = indent(lnum)
-      let ind = s:MorePrevLineIndent(pline, line, ind)
-      let ind = s:PrevLineIndent(line, lnum, pline, a:cline, ind)
+    if s:InsideQuote(lnum) && !s:InsideQuote(v:lnum)
+      let [line, lnum] = s:SkipQuoteLine(line, lnum)
     endif
+    let [pline, pnum] = s:SkipCommentLine(line, lnum ,1)
+    let ind = indent(lnum)
+    let ind = s:MorePrevLineIndent(pline, line, ind)
+    let ind = s:PrevLineIndent(line, lnum, pline, a:cline, ind)
   elseif lnum > 0
     let ind = indent(lnum)
   endif
@@ -238,11 +222,7 @@ endfunction
 function s:GetPrevNonBlank(lnum)
   let s:prev_lnum = prevnonblank(a:lnum - 1)
 
-  if s:prev_lnum
-    return 1
-  else
-    return 0
-  endif
+  return s:prev_lnum
 endfunction
 
 function s:InsideCaseIndent(ind, cline)
@@ -260,24 +240,32 @@ function s:InsideCaseIndent(ind, cline)
 endfunction
 
 function s:GetHereDocPairLine1(line)
-  let estr = matchstr(a:line, '[A-Za-z0-9*-/!%:=?@\[\]^_{}~]\+$')
-  let sstr = '\C<<-\=\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
-  if a:line =~ '^\t\+'
-    let estr = '\C^\t*\M' . estr . '\m$'
-  else
-    let estr = '\C^\M' . estr . '\m$'
+  let line = a:line
+  if line =~ '\n'
+    let line = substitute(line, '\n.*$', '', '')
   endif
+  if line =~ '^\t\+'
+    let sstr = matchstr(line, '\S\+$')
+  else
+    let sstr = line
+  endif
+  let sstr = '\C<<-\=\s*\%("\|\%o47\|\\\)\=\M' . sstr . '\m\%("\|\%o47\)\='
+  let estr = '\C^\M' . line . '\m$'
 
   return [sstr, estr]
 endfunction
 
 function s:GetHereDocPairLine2()
   let line = getline(".")
-  let estr = substitute(line, '^.*<<-\=\s*\%("\|\%o47\|\\\)\=', '', '')
-  let estr = substitute(estr,
-        \ '^\([A-Za-z0-9*-/!%:=?@\[\]^_{}~]\+\)\%("\|\%o47\)\=.*$', '\1', '')
+  let estr = substitute(line, '^.*<<-\=\s*', '', '')
+  if estr =~ '^"\|\%o47'
+    let estr = substitute(estr, '^\%("\|\%o47\)\(\S\+\)\%("\|\%o47\)', '\1', '')
+  else
+    let estr = substitute(estr, '^\\', '', '')
+    let estr = substitute(estr, '\s*\%(\\\@<!|\|\\\@<!>\).*$', '', '')
+  endif
   if line =~ '<<-'
-    let sstr = '\C<<-\=\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
+    let sstr = '\C<<-\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
     let estr = '\C^\t*\M' . estr . '\m$'
   else
     let sstr = '\C<<\s*\%("\|\%o47\|\\\)\=\M' . estr . '\m\%("\|\%o47\)\='
@@ -285,6 +273,27 @@ function s:GetHereDocPairLine2()
   endif
 
   return [sstr, estr]
+endfunction
+
+function s:InsideHereDoc(lnum)
+  let snum = 0
+  let lnum = 0
+  let onum = 0
+  let sstr = ""
+  let save_cursor = getpos(".")
+  call cursor(a:lnum, 1)
+  while search('<<-\=\s*\S\+', 'bW')
+    let snum = line(".")
+    let [sstr, estr] = s:GetHereDocPairLine2()
+    let lnum = searchpair(sstr, '', estr, 'nW')
+    if lnum >= a:lnum || lnum < 1 || lnum < onum
+      break
+    endif
+    let onum = lnum
+  endwhile
+  call setpos('.', save_cursor)
+
+  return [snum, lnum, sstr]
 endfunction
 
 function s:GetMostWidthSpaceLen(line)
@@ -319,10 +328,54 @@ function s:GetTabAndSpaceSum(cline, cind, sstr, sind)
   return [tbind, spind]
 endfunction
 
-function s:InsideSingleQuote(lnum)
+function s:InsideQuote(lnum)
+  let init = 0
   let line = ""
+  let snum = s:GetOutSideQuote()
+
+  let snum += 1
+  while snum < a:lnum
+    let nline = getline(snum)
+    let snum += 1
+    if nline !~ '\\\@<!"' && nline !~ '\\\@<!\%o47' && !init
+      continue
+    elseif nline =~ '^\s*#' && !init
+      continue
+    elseif nline =~ '#' && !init
+      let nline = substitute(
+            \ nline, "'[^']*'" . '\|"\%([^"]\|\\"\)*\\\@<!"', '', 'g')
+      let nline = substitute(nline, '^\(.*\)#.*$', '\1', '')
+    elseif nline =~ '"\|\%o47' && !init
+      let nline = substitute(
+            \ nline, "'[^']*'" . '\|"\%([^"]\|\\"\)*\\\@<!"', '', 'g')
+    endif
+    if init
+      let line = line . nline
+    endif
+
+    if !init && nline =~ '\\\@<!"\|\\\@<!\%o47'
+      let [hnum, lnum, sstr] = s:InsideHereDoc(snum - 1)
+      if lnum >= snum - 1
+        let snum = lnum + 1
+      elseif lnum < 1 && hnum
+        break
+      else
+        let [line, init] = s:GetInitQuote(nline, 0)
+      endif
+    elseif init == 2
+          \ && nline =~ '\\\@<!"' && len(split(line, '\\\@<!"', 1)) % 2
+      let [line, init] = s:GetInitQuote(line, 1)
+    elseif init == 1
+          \ && nline =~ '\\\@<!\%o47' && len(split(line, '\\\@<!\%o47', 1)) % 2
+      let [line, init] = s:GetInitQuote(line, 1)
+    endif
+  endwhile
+
+  return init
+endfunction
+
+function s:GetOutSideQuote()
   let snum = 0
-  let mnum = search("'", 'nbW')
   let slist = [search('^\h\w*\s*(\s*)\s*{\=\s*\%(#.*\)\=$', 'nbW'),
         \ search('^\s*fi\>\s*\%(#.*\)\=$', 'nbW'),
         \ search('^\s*esac\>\s*\%(#.*\)\=$', 'nbW'),
@@ -332,45 +385,41 @@ function s:InsideSingleQuote(lnum)
       let snum = enum
     endif
   endfor
-  if mnum <= snum
-    return 0
-  endif
 
-  let snum += 1
-  while snum < a:lnum
-    let nline = getline(snum)
-    let snum += 1
-    if nline !~ "'"
-      continue
-    elseif nline =~ '^\s*#' && len(split(line, "'", 1)) % 2
-      continue
-    elseif nline =~ '#' && len(split(line, "'", 1)) % 2
-      let nline = substitute(nline, "'[^']\\+'" . '\|"[^"]\+"', '', 'g')
-      let nline = substitute(nline, '^\(.*\)#.*$', '\1', '')
-    elseif nline =~ '"' && len(split(line, "'", 1)) % 2
-      let nline = substitute(nline, '"[^"]\+"', '', 'g')
-    endif
-    let line = line . nline
-  endwhile
-
-  if len(split(line, "'", 1)) % 2
-    return 0
-  else
-    return 1
-  endif
+  return snum
 endfunction
 
-function s:SkipSingleQuoteLine(line, lnum)
+function s:GetInitQuote(line, wipe)
+  let line = a:line
+  if a:wipe
+    let line = substitute(
+          \ line, "'[^']*'" . '\|"\%([^"]\|\\"\)*\\\@<!"', '', 'g')
+    let line = substitute(line, '^\(.*\)#.*$', '\1', '')
+  endif
+  let dq = match(line, '\\\@<!"')
+  let sq = match(line, '\\\@<!\%o47')
+  if dq > -1 && sq < 0 || dq > -1 && dq < sq
+    let init = 2
+  elseif sq > -1 && dq < 0 || sq > -1 && sq < dq
+    let init = 1
+  else
+    let init = 0
+  endif
+
+  return [line, init]
+endfunction
+
+function s:SkipQuoteLine(line, lnum)
   let lnum = a:lnum
-  while s:InsideSingleQuote(lnum)
+  while s:InsideQuote(lnum)
     let lnum = prevnonblank(lnum - 1)
   endwhile
   let line = getline(lnum)
   let [pline, pnum] = s:SkipCommentLine(line, lnum, 1)
-  if pnum && s:InsideSingleQuote(pnum)
-    let [line, lnum] = s:SkipSingleQuoteLine(pline, pnum)
+  if pnum != lnum && s:InsideQuote(pnum)
+    let [line, lnum] = s:SkipQuoteLine(pline, pnum)
   endif
-  if lnum && indent(lnum) == 0
+  if indent(lnum) == 0
     let [line, lnum] = s:SkipCommentLine(line, lnum, 1)
   endif
   let line = line . "\n" . a:line
