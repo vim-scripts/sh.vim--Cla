@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2014-05-28 17:19:43+09 $
-"                   $Revision: 1.56 $
+" Id:               $Date: 2014-06-18 05:56:47+09 $
+"                   $Revision: 1.57 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -76,7 +76,7 @@ function GetShIndent()
   let cind = indent(v:lnum)
   let ind = s:MorePrevLineIndent(pline, line, ind)
   let ind = s:PrevLineIndent(line, lnum, nnum, pline, cline, ind)
-  let ind = s:CurrentLineIndent(line, cline, ind, cind)
+  let ind = s:CurrentLineIndent(cline, ind, cind)
 
   return ind
 endfunction
@@ -138,14 +138,14 @@ function s:PrevLineIndent2(line, ind)
   return ind
 endfunction
 
-function s:CurrentLineIndent(line, cline, ind, cind)
+function s:CurrentLineIndent(cline, ind, cind)
   let ind = a:ind
   if a:cline =~# '^\s*case\>' && a:cline !~# ';;\s*\<esac\>'
     call s:GetCaseLabelsIndent(a:cind)
   elseif a:cline =~# '^\s*esac\>'
     let ind = s:ClosePairIndent('\C^\s*case\>', '\C^\s*esac\>', v:lnum, ind)
   elseif a:cline =~# '^\s*\%(then\|do\|else\|elif\|fi\|done\)\>'
-        \ || a:cline =~ '^\s*[})]' && a:line !~ '^\s*[})]'
+        \ || a:cline =~ '^\s*[})]'
     let ind = ind - &sw
   elseif a:cline =~ '^#'
         \ || a:cline =~ '<<[^-]' && a:cind == 0
