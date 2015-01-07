@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2014-06-18 05:56:47+09 $
-"                   $Revision: 1.57 $
+" Id:               $Date: 2015-01-07 19:04:10+09 $
+"                   $Revision: 1.58 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -18,7 +18,7 @@ setlocal indentexpr=GetShIndent()
 setlocal indentkeys+=0=then,0=do,0=else,0=elif,0=fi,0=esac,0=done,0=)
 setlocal indentkeys+=0=fin,0=fil,0=fip,0=fir,0=fix
 setlocal indentkeys-=:,0#
-let s:OutSideQuoteItem = '\C^\%(function\s\+\)\=\h\w*(\s*)'
+let s:OutSideQuoteItem = '^\h\w*(\s*)\s*\%(#.*\)\=$'
 
 if exists("*GetShIndent")
   finish
@@ -109,11 +109,12 @@ function s:PrevLineIndent(line, lnum, nnum, pline, cline, ind)
     let ind = ind - &sw
   elseif a:line =~ '\%(^\s*\|\\\|(\)\@<!)'
     let ind = s:PrevLineIndent2(a:line, ind)
-    let ind = s:ClosedPairIndentPrev(a:nnum, '(', ')', ind)
+    let ind = s:ClosedPairIndentPrev(a:nnum, a:line, '(', ')', ind)
   elseif a:line =~ '\$((\|\$(\|\\\@<!(\%(\s*)\)\@!'
     let ind = s:NoClosedPairIndentFore(
           \ a:lnum, a:line, '\$((\|\$(\|\\\@<!(', ind)
   elseif a:line =~ '`'
+    let ind = s:PrevLineIndent2(a:line, ind)
     let ind = s:ClosedBackQuotePairIndent(a:lnum, a:nnum, a:line, ind)
   elseif a:line =~ '^.\{-}|\%([^|]\|\s*[^#]\)'
     for line in split(a:line, '|\%([^|]\|\s*[^#]\)')
@@ -211,7 +212,7 @@ function s:NoClosedPairIndentFore(lnum, line, item1, ind)
   return ind
 endfunction
 
-function s:ClosedPairIndentPrev(lnum, item1, item2, ind)
+function s:ClosedPairIndentPrev(lnum, line, item1, item2, ind)
   let ind = a:ind
   let icount = 0
   let save_cursor = getpos(".")
@@ -237,7 +238,7 @@ function s:ClosedPairIndentPrev(lnum, item1, item2, ind)
     endif
     let line = getline(snum)
     let [pline, pnum] = s:SkipCommentLine(line, snum, 1)
-    let ind = s:MorePrevLineIndent(pline, line, ind)
+    let ind = s:MorePrevLineIndent(pline, a:line, ind)
     let ind = s:PrevLineIndent2(line, ind)
   endif
   call setpos('.', save_cursor)
@@ -252,7 +253,7 @@ function s:ClosedBackQuotePairIndent(lnum, nnum, line, ind)
 
   if a:line !~ item . ".*" . item && len(split(line, item, 1)) % 2
     let ind = s:PrevLineIndent2(a:line, ind)
-    let ind = s:ClosedPairIndentPrev(a:nnum, item, item, ind)
+    let ind = s:ClosedPairIndentPrev(a:nnum, a:line, item, item, ind)
   elseif a:line !~ item . ".*" . item
     let ind = s:NoClosedPairIndentFore(a:lnum, a:line, item, ind)
   endif
