@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-01-07 19:04:10+09 $
-"                   $Revision: 1.58 $
+" Id:               $Date: 2015-02-15 18:36:02+09 $
+"                   $Revision: 1.59 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -114,7 +114,6 @@ function s:PrevLineIndent(line, lnum, nnum, pline, cline, ind)
     let ind = s:NoClosedPairIndentFore(
           \ a:lnum, a:line, '\$((\|\$(\|\\\@<!(', ind)
   elseif a:line =~ '`'
-    let ind = s:PrevLineIndent2(a:line, ind)
     let ind = s:ClosedBackQuotePairIndent(a:lnum, a:nnum, a:line, ind)
   elseif a:line =~ '^.\{-}|\%([^|]\|\s*[^#]\)'
     for line in split(a:line, '|\%([^|]\|\s*[^#]\)')
@@ -256,6 +255,8 @@ function s:ClosedBackQuotePairIndent(lnum, nnum, line, ind)
     let ind = s:ClosedPairIndentPrev(a:nnum, a:line, item, item, ind)
   elseif a:line !~ item . ".*" . item
     let ind = s:NoClosedPairIndentFore(a:lnum, a:line, item, ind)
+  else
+    let ind = s:PrevLineIndent2(a:line, ind)
   endif
 
   return ind
