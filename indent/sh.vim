@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-02-15 18:36:02+09 $
-"                   $Revision: 1.59 $
+" Id:               $Date: 2015-02-23 16:56:11+09 $
+"                   $Revision: 1.61 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -18,7 +18,7 @@ setlocal indentexpr=GetShIndent()
 setlocal indentkeys+=0=then,0=do,0=else,0=elif,0=fi,0=esac,0=done,0=)
 setlocal indentkeys+=0=fin,0=fil,0=fip,0=fir,0=fix
 setlocal indentkeys-=:,0#
-let s:OutSideQuoteItem = '^\h\w*(\s*)\s*\%(#.*\)\=$'
+let s:OutSideQuoteItem = '^\h\w*\s*(\s*)'
 
 if exists("*GetShIndent")
   finish
