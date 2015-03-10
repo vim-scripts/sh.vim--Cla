@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-02-23 16:56:11+09 $
-"                   $Revision: 1.61 $
+" Id:               $Date: 2015-03-11 05:11:19+09 $
+"                   $Revision: 1.64 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -75,6 +75,7 @@ function GetShIndent()
   let ind = indent(lnum)
   let cind = indent(v:lnum)
   let ind = s:MorePrevLineIndent(pline, line, ind)
+  let ind = s:InsideCaseLabelIndent(pline, line, ind)
   let ind = s:PrevLineIndent(line, lnum, nnum, pline, cline, ind)
   let ind = s:CurrentLineIndent(cline, ind, cind)
 
@@ -92,22 +93,33 @@ function s:MorePrevLineIndent(pline, line, ind)
   return ind
 endfunction
 
+function s:InsideCaseLabelIndent(pline, line, ind)
+  let ind = a:ind
+  if a:line =~ ';;\s*\%(#.*\)\=$'
+        \ && a:pline !~# '^\s*case\>' && a:pline !~ ';;\s*\%(#.*\)\=$'
+    let ind = ind - &sw
+  elseif a:line =~ '^\s*[^(].\{-})' && a:line !~ ';;\s*\%(#.*\)\=$'
+        \ && (a:pline =~# '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
+    let ind = ind + &sw
+    let line = s:HideAnyItemLine(a:line)
+    if line !~ '^.\{-}|\%([^|]\|\s*[^#]\)'
+      let ind = s:PrevLineIndent2(line, ind)
+    endif
+  endif
+
+  return ind
+endfunction
+
 function s:PrevLineIndent(line, lnum, nnum, pline, cline, ind)
   let ind = a:ind
   if a:line =~ '^\s*[{(]\s*\%(#.*\)\=$'
-        \ || a:line =~# '^\%(function\s\+\)\=\h\w*\s*(\s*)\s*{\s*\%(#.*\)\=$'
+        \ || a:line =~# '^\h\w*\s*(\s*)\s*{\s*\%(#.*\)\=$'
         \ || a:line =~ '\%(;\|&&\|||\)\s*\%({\|(\)\s*\%(#.*\)\=$'
     let ind = ind + &sw
-  elseif a:line =~ '^\s*[^(].*)' && a:line !~ ';;\s*\%(#.*\)\=$'
-        \ && (a:pline =~# '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
-    let ind = ind + &sw
-    let line = substitute(a:line, '^\s*[^(].*)', '', '')
-    let ind = s:PrevLineIndent2(line, ind)
   elseif a:line =~# '^\s*case\>' && a:line !~# ';;\s*\<esac\>'
     let ind = s:InsideCaseIndent(ind, a:cline)
-  elseif a:line =~ ';;\s*\%(#.*\)\=$' && a:line !~ '^\s*[^(].*)'
-    let ind = ind - &sw
   elseif a:line =~ '\%(^\s*\|\\\|(\)\@<!)'
+        \ && a:pline !~# '^\s*case\>' && a:pline !~ ';;\s*\%(#.*\)\=$'
     let ind = s:PrevLineIndent2(a:line, ind)
     let ind = s:ClosedPairIndentPrev(a:nnum, a:line, '(', ')', ind)
   elseif a:line =~ '\$((\|\$(\|\\\@<!(\%(\s*)\)\@!'
@@ -116,7 +128,8 @@ function s:PrevLineIndent(line, lnum, nnum, pline, cline, ind)
   elseif a:line =~ '`'
     let ind = s:ClosedBackQuotePairIndent(a:lnum, a:nnum, a:line, ind)
   elseif a:line =~ '^.\{-}|\%([^|]\|\s*[^#]\)'
-    for line in split(a:line, '|\%([^|]\|\s*[^#]\)')
+    let line = s:HideAnyItemLine(a:line)
+    for line in split(line, '|')
       let ind = s:PrevLineIndent2(line, ind)
     endfor
   else
@@ -238,6 +251,7 @@ function s:ClosedPairIndentPrev(lnum, line, item1, item2, ind)
     let line = getline(snum)
     let [pline, pnum] = s:SkipCommentLine(line, snum, 1)
     let ind = s:MorePrevLineIndent(pline, a:line, ind)
+    let ind = s:InsideCaseLabelIndent(pline, a:line, ind)
     let ind = s:PrevLineIndent2(line, ind)
   endif
   call setpos('.', save_cursor)
@@ -577,6 +591,15 @@ function s:GetInitQuote(line, wipe, lret)
   else
     return init
   endif
+endfunction
+
+function s:HideAnyItemLine(line)
+  let line = substitute(
+        \ a:line, "'[^']*'" . '\|"\%([^"]\|\\"\)*\\\@<!"', '', 'g')
+  let line = substitute(line, '#.*$', '', '')
+  let line = substitute(line, '^\s*.\{-})', '', '')
+
+  return line
 endfunction
 
 function s:SkipQuoteLine(line, lnum)
