@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-03-11 05:11:19+09 $
-"                   $Revision: 1.64 $
+" Id:               $Date: 2015-03-12 17:13:38+09 $
+"                   $Revision: 1.66 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -76,7 +76,7 @@ function GetShIndent()
   let cind = indent(v:lnum)
   let ind = s:MorePrevLineIndent(pline, line, ind)
   let ind = s:InsideCaseLabelIndent(pline, line, ind)
-  let ind = s:PrevLineIndent(line, lnum, nnum, pline, cline, ind)
+  let ind = s:PrevLineIndent(line, lnum, nnum, pline, cline, ind, cind)
   let ind = s:CurrentLineIndent(cline, ind, cind)
 
   return ind
@@ -110,14 +110,14 @@ function s:InsideCaseLabelIndent(pline, line, ind)
   return ind
 endfunction
 
-function s:PrevLineIndent(line, lnum, nnum, pline, cline, ind)
+function s:PrevLineIndent(line, lnum, nnum, pline, cline, ind, cind)
   let ind = a:ind
   if a:line =~ '^\s*[{(]\s*\%(#.*\)\=$'
         \ || a:line =~# '^\h\w*\s*(\s*)\s*{\s*\%(#.*\)\=$'
         \ || a:line =~ '\%(;\|&&\|||\)\s*\%({\|(\)\s*\%(#.*\)\=$'
     let ind = ind + &sw
   elseif a:line =~# '^\s*case\>' && a:line !~# ';;\s*\<esac\>'
-    let ind = s:InsideCaseIndent(ind, a:cline)
+    let ind = s:InsideCaseIndent(ind, a:cline, a:cind)
   elseif a:line =~ '\%(^\s*\|\\\|(\)\@<!)'
         \ && a:pline !~# '^\s*case\>' && a:pline !~ ';;\s*\%(#.*\)\=$'
     let ind = s:PrevLineIndent2(a:line, ind)
@@ -398,10 +398,12 @@ function s:GetNextNonBlank(lnum)
   return s:next_lnum
 endfunction
 
-function s:InsideCaseIndent(ind, cline)
+function s:InsideCaseIndent(ind, cline, cind)
   let ind = a:ind
-  if exists("g:sh_indent_case_labels") && g:sh_indent_case_labels
+  if g:sh_indent_case_labels
     let ind = ind + &sw
+  elseif !g:sh_indent_case_labels && !exists("s:case_labels_ind")
+    let ind = a:cind
   elseif exists("s:case_labels_ind") && s:case_labels_ind
     let ind = ind + s:case_labels_ind
   endif
@@ -413,8 +415,7 @@ function s:InsideCaseIndent(ind, cline)
 endfunction
 
 function s:GetCaseLabelsIndent(cind)
-  if exists("g:sh_indent_case_labels") && !g:sh_indent_case_labels
-        \ && s:GetNextNonBlank(v:lnum)
+  if !g:sh_indent_case_labels && s:GetNextNonBlank(v:lnum)
     let clind = indent(s:next_lnum)
     if clind != a:cind && clind - a:cind > -1
       let s:case_labels_ind = clind - a:cind
