@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-03-14 14:16:07+09 $
-"                   $Revision: 1.67 $
+" Id:               $Date: 2015-03-15 15:45:12+09 $
+"                   $Revision: 1.69 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -76,7 +76,7 @@ function GetShIndent()
   let cind = indent(v:lnum)
   let ind = s:MorePrevLineIndent(pline, line, ind)
   let ind = s:InsideCaseLabelIndent(pline, line, ind)
-  let ind = s:PrevLineIndent(line, lnum, nnum, pline, cline, ind, cind)
+  let ind = s:PrevLineIndent(line, lnum, nnum, pline, cline, ind)
   let ind = s:CurrentLineIndent(cline, ind, cind)
 
   return ind
@@ -95,37 +95,41 @@ endfunction
 
 function s:InsideCaseLabelIndent(pline, line, ind)
   let ind = a:ind
-  if a:line =~ ';;\s*\%(#.*\)\=$'
-        \ && a:pline !~# '^\s*case\>' && a:pline !~ ';;\s*\%(#.*\)\=$'
+  if a:line =~ '^\s*esac\>\s*;;\s*\%(#.*\)\=$' && a:pline =~ ';;\s*\%(#.*\)\=$'
+    let ind = ind - &sw
+  elseif a:line =~ ';;\s*\%(#.*\)\=$'
+        \ && a:pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
+        \ && a:pline !~ ';;\s*\%(#.*\)\=$'
     let ind = ind - &sw
   elseif a:line =~ '^\s*[^(].\{-})' && a:line !~ ';;\s*\%(#.*\)\=$'
-        \ && (a:pline =~# '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
+        \ && (a:pline =~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
+        \ || a:pline =~ ';;\s*\%(#.*\)\=$')
     let ind = ind + &sw
   endif
 
   return ind
 endfunction
 
-function s:PrevLineIndent(line, lnum, nnum, pline, cline, ind, cind)
+function s:PrevLineIndent(line, lnum, nnum, pline, cline, ind)
   let ind = a:ind
   if a:line =~ '^\s*[{(]\s*\%(#.*\)\=$'
         \ || a:line =~# '^\h\w*\s*(\s*)\s*{\s*\%(#.*\)\=$'
         \ || a:line =~ '\%(;\|&&\|||\)\s*\%({\|(\)\s*\%(#.*\)\=$'
     let ind = ind + &sw
   elseif a:line =~# '^\s*case\>' && a:line !~# ';;\s*\<esac\>'
-    let ind = s:InsideCaseIndent(ind, a:cline, a:cind)
+    let ind = s:InsideCaseIndent(ind, a:cline)
   elseif a:line =~ '^.\{-}|\%([^|]\|\s*[^#]\)\|^.\{-}[&]\%([^&]\|\s*[^#]\)'
         \ || a:line =~ '^\s*[^(].\{-})' && a:line !~ ';;\s*\%(#.*\)\=$'
         \ && (a:pline =~# '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
     let line = s:HideAnyItemLine(a:line, a:pline)
     for line in split(line, '|\|[&]')
       let ind = s:PrevLineIndent2(line, ind)
-      let ind = s:PrevLineIndent3(line, a:lnum, a:nnum, a:pline, ind)
+      let ind = s:PrevLineIndent3(line, a:lnum, a:nnum, a:pline, a:cline, ind)
     endfor
   else
     let line = s:HideAnyItemLine(a:line, a:pline)
     let ind = s:PrevLineIndent2(line, ind)
-    let ind = s:PrevLineIndent3(line, a:lnum, a:nnum, a:pline, ind)
+    let ind = s:PrevLineIndent3(line, a:lnum, a:nnum, a:pline, a:cline, ind)
   endif
 
   return ind
@@ -143,10 +147,13 @@ function s:PrevLineIndent2(line, ind)
   return ind
 endfunction
 
-function s:PrevLineIndent3(line, lnum, nnum, pline, ind)
+function s:PrevLineIndent3(line, lnum, nnum, pline, cline, ind)
   let ind = a:ind
-  if a:line =~ '\%(^\s*\|\\\|(\)\@<!)'
-        \ && a:pline !~# '^\s*case\>' && a:pline !~ ';;\s*\%(#.*\)\=$'
+  if a:line =~# '^\s*case\>' && a:line !~# ';;\s*\<esac\>'
+    let ind = s:InsideCaseIndent(ind, a:cline)
+  elseif a:line =~ '\%(^\s*\|\\\|(\)\@<!)'
+        \ && a:pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
+        \ && a:pline !~ ';;\s*\%(#.*\)\=$'
     let ind = s:ClosedPairIndentPrev(a:nnum, a:line, '(', ')', ind)
   elseif a:line =~ '\$((\|\$(\|\\\@<!(\%(\s*)\)\@!'
     let ind = s:NoClosedPairIndentFore(
@@ -363,13 +370,26 @@ function s:CloseEsacIndent(ind)
     let ind = ind - &sw
   else
     let save_cursor = getpos(".")
-    call cursor(v:lnum, 1)
-    let lnum = searchpair('\C^\s*case\>', '', '\C^\s*esac\>', 'bW',
-          \ 's:InsideCommentOrQuote() || s:InsideHereDoc()')
+    while 1
+      let lnum = search('\C\<case\>', 'bW')
+      if lnum < 1
+        break
+      endif
+      if s:InsideCommentOrQuote() || s:InsideHereDoc()
+        continue
+      else
+        let cind = indent(lnum)
+        let line = getline(lnum)
+        if line =~# '\C^\s*case\>' && cind <= ind
+          let ind = cind
+          break
+        elseif line =~# '\C^\s*[^(].\{-})\s*case\>' && cind < ind
+          let ind = cind + &sw
+          break
+        endif
+      endif
+    endwhile
     call setpos('.', save_cursor)
-    if lnum > 0
-      let ind = indent(lnum)
-    endif
   endif
 
   return ind
@@ -410,12 +430,10 @@ function s:GetNextNonBlank(lnum)
   return s:next_lnum
 endfunction
 
-function s:InsideCaseIndent(ind, cline, cind)
+function s:InsideCaseIndent(ind, cline)
   let ind = a:ind
   if g:sh_indent_case_labels
     let ind = ind + &sw
-  elseif !g:sh_indent_case_labels && !exists("s:case_labels_ind")
-    let ind = a:cind
   elseif exists("s:case_labels_ind") && s:case_labels_ind
     let ind = ind + s:case_labels_ind
   endif
