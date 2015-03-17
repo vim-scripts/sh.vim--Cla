@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-03-15 15:45:12+09 $
-"                   $Revision: 1.69 $
+" Id:               $Date: 2015-03-18 08:02:08+09 $
+"                   $Revision: 1.75 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -58,8 +58,16 @@ function GetShIndent()
 
   let [snum, hnum, sstr] = s:GetHereDocItem(lnum, line)
   if hnum == lnum
-    let [line, lnum] = s:SkipCommentLine(line, snum, 1)
-    let [line, lnum] = s:GetHereDocPrevLine(lnum, line)
+    let sline = getline(snum)
+    if sline =~# '^\s*\%(done\>\|esac\>\|fi\>\|}\|)\)'
+      let [line, lnum] = [sline, snum]
+    else
+      let [line, lnum] = s:SkipCommentLine(sline, snum, 1)
+      let [line, lnum] = s:GetHereDocPrevLine(lnum, line)
+    endif
+    if line =~# '^\s*\%(done\>\|esac\>\|fi\>\|}\|)\).*\\$'
+      return indent(lnum)
+    endif
   elseif hnum >= v:lnum
     let ind = indent(lnum)
     let cind = indent(v:lnum)
@@ -95,7 +103,7 @@ endfunction
 
 function s:InsideCaseLabelIndent(pline, line, ind)
   let ind = a:ind
-  if a:line =~ '^\s*esac\>\s*;;\s*\%(#.*\)\=$' && a:pline =~ ';;\s*\%(#.*\)\=$'
+  if a:line =~# '^\s*esac\>\s*;;\s*\%(#.*\)\=$' && a:pline =~ ';;\s*\%(#.*\)\=$'
     let ind = ind - &sw
   elseif a:line =~ ';;\s*\%(#.*\)\=$'
         \ && a:pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
@@ -113,7 +121,7 @@ endfunction
 function s:PrevLineIndent(line, lnum, nnum, pline, cline, ind)
   let ind = a:ind
   if a:line =~ '^\s*[{(]\s*\%(#.*\)\=$'
-        \ || a:line =~# '^\h\w*\s*(\s*)\s*{\s*\%(#.*\)\=$'
+        \ || a:line =~ '^\h\w*\s*(\s*)\s*{\s*\%(#.*\)\=$'
         \ || a:line =~ '\%(;\|&&\|||\)\s*\%({\|(\)\s*\%(#.*\)\=$'
     let ind = ind + &sw
   elseif a:line =~# '^\s*case\>' && a:line !~# ';;\s*\<esac\>'
@@ -176,6 +184,7 @@ function s:CurrentLineIndent(cline, ind, cind)
     let ind = ind - &sw
   elseif a:cline =~ '^#'
         \ || a:cline =~ '<<[^-]' && a:cind == 0
+        \ && a:cline !~# '^\%(done\|esac\|fi\)\>'
     let ind = 0
   endif
 
@@ -380,10 +389,10 @@ function s:CloseEsacIndent(ind)
       else
         let cind = indent(lnum)
         let line = getline(lnum)
-        if line =~# '\C^\s*case\>' && cind <= ind
+        if line =~# '^\s*case\>' && cind <= ind
           let ind = cind
           break
-        elseif line =~# '\C^\s*[^(].\{-})\s*case\>' && cind < ind
+        elseif line =~# '^\s*[^(].\{-})\s*case\>' && cind < ind
           let ind = cind + &sw
           break
         endif
@@ -460,7 +469,13 @@ function s:GetHereDocPrevLine(lnum, line)
   while 1
     let [snum, hnum, sstr] = s:GetHereDocItem(lnum)
     if hnum == lnum
-      let [line, lnum] = s:SkipCommentLine(line, snum, 1)
+      let sline = getline(snum)
+      if sline =~# '^\s*\%(done\>\|esac\>\|fi\>\|}\|)\)'
+        let [line, lnum] = [sline, snum]
+        break
+      else
+        let [line, lnum] = s:SkipCommentLine(line, snum, 1)
+      endif
     else
       break
     endif
@@ -480,14 +495,15 @@ function s:GetHereDocPairLine(lnum)
   elseif line =~ '<<-\=\s*\\$'
     let estr = ""
   else
-    let estr = substitute(line, '^.*<<-\=\s*', '', '')
+    let estr = substitute(line, '^.\{-}<<-\=\s*\\\=', '', '')
   endif
   unlet! s:next_lnum
-  if estr =~ '^"\|\%o47'
-    let estr = substitute(estr, '^\%("\|\%o47\)\(\S\+\)\%("\|\%o47\)', '\1', '')
+  if estr =~ "^'"
+    let estr = substitute(estr, '^\%o47\([^' . "'" . ']\+\)\%o47.*$', '\1', '')
+  elseif estr =~ '^"'
+    let estr = substitute(estr, '^"\([^"]\+\)".*$', '\1', '')
   else
-    let estr = substitute(estr, '^\\', '', '')
-    let estr = substitute(estr, '\s*\%(\\\@<!|\|\\\@<!>\).*$', '', '')
+    let estr = substitute(estr, '\s*\%(\\\@<!|\|\\\@<!>\|\\\@<!#\).*$', '', '')
   endif
   if line =~ '<<-'
     let sstr = '\C\%(^\s*#.*\)\@<!<<-\s*\%(\\\n\s*\)\=\%("\|\%o47\|\\\)\=\M' .
