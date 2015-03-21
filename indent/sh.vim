@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-03-19 19:09:01+09 $
-"                   $Revision: 1.79 $
+" Id:               $Date: 2015-03-21 12:57:47+09 $
+"                   $Revision: 1.80 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -49,12 +49,10 @@ function GetShIndent()
   while 1
     let [snum, hnum, sstr] = s:GetHereDocItem(lnum, line)
     if hnum == lnum
-      let sline = getline(snum)
-      if sline =~# '^\s*\%(done\>\|esac\>\|fi\>\|}\|)\)'
-        let [line, lnum] = [sline, snum]
+      if sstr =~# '^\s*\%(done\>\|esac\>\|fi\>\|}\|)\)'
+        let [line, lnum] = [sstr, snum]
       else
-        let [line, lnum] = s:SkipCommentLine(sline, snum, 1)
-        let [line, lnum] = s:GetHereDocPrevLine(lnum, line)
+        let [line, lnum] = s:GetHereDocPrevLine(snum, sstr)
       endif
       if line =~# '^\s*\%(done\>\|esac\>\|fi\>\|}\|)\).*\\$'
         let line = substitute(line, '\\$', '', '')
@@ -465,20 +463,28 @@ endfunction
 function s:GetHereDocPrevLine(lnum, line)
   let lnum = a:lnum
   let line = a:line
-  while 1
-    let [snum, hnum, sstr] = s:GetHereDocItem(lnum)
+  let flag = 1
+  while s:GetPrevNonBlank(lnum)
+    let lnum = s:prev_lnum
+    let line = getline(lnum)
+    if flag
+      let flag = 0
+      let fline = line
+    endif
+    let [snum, hnum, sstr] = s:GetHereDocItem(lnum, line)
     if hnum == lnum
-      let sline = getline(snum)
-      if sline =~# '^\s*\%(done\>\|esac\>\|fi\>\|}\|)\)'
-        let [line, lnum] = [sline, snum]
-        break
-      else
-        let [line, lnum] = s:SkipCommentLine(line, snum, 1)
-      endif
+          \ && sstr =~# '^\s*\%(done\>\|esac\>\|fi\>\|}\|)\)'
+      let [line, lnum] = [sstr, snum]
+      break
+    elseif hnum == lnum
+      let [line, lnum] = [sstr, snum]
+    elseif fline =~ '^\s*#' && line =~ '^\s*#'
+      continue
     else
       break
     endif
   endwhile
+  unlet! s:prev_lnum
   if line =~ '\\\@<!"\|\\\@<!\%o47' && s:InsideQuoteLine(lnum)
     let [line, lnum] = s:SkipQuoteLine(line, lnum)
   endif
@@ -505,16 +511,12 @@ function s:GetHereDocPairLine(lnum)
     let estr = substitute(estr, '\s*\%(\\\@<!|\|\\\@<!>\|\\\@<!#\).*$', '', '')
   endif
   if line =~ '<<-'
-    let sstr = '\C\%(^\s*#.*\)\@<!<<-\s*\%(\\\n\s*\)\=\%("\|\%o47\|\\\)\=\M' .
-          \ estr . '\m\%("\|\%o47\)\='
     let estr = '\C\%(<<-\=\s*\\\n\)\@<!\_^\t*\M' . estr . '\m$'
   else
-    let sstr = '\C\%(^\s*#.*\)\@<!<<\s*\%(\\\n\s*\)\=\%("\|\%o47\|\\\)\=\M' .
-          \ estr . '\m\%("\|\%o47\)\='
     let estr = '\C\%(<<-\=\s*\\\n\)\@<!\_^\M' . estr . '\m$'
   endif
 
-  return [sstr, estr, line]
+  return [estr, line]
 endfunction
 
 function s:NotHereDocItem(line)
@@ -535,14 +537,20 @@ function s:GetHereDocItem(lnum, ...)
   let line = ""
   let save_cursor = getpos(".")
   call cursor(a:lnum, a:0 ? len(a:1) : 1)
-  while search('\%(^\s*#.*\)\@<!<<-\=\s*\S\+', 'bW')
+  while search('\%(^\s*#.\{-}\)\@<!<<-\=\s*\S\+', 'bW')
     let snum = line(".")
-    let [sstr, estr, line] = s:GetHereDocPairLine(snum)
-    let lnum = searchpair(sstr, '', estr, 'nW')
-    if lnum >= a:lnum || lnum < 1 || lnum < onum
+    let [estr, line] = s:GetHereDocPairLine(snum)
+    let lnum = search(estr, 'nW')
+    if lnum < onum
+      let lnum = onum
+      let snum = pnum
+      let line = getline(snum)
+      break
+    elseif lnum < 1 || lnum > a:lnum
       break
     endif
     let onum = lnum
+    let pnum = snum
   endwhile
   call setpos('.', save_cursor)
 
@@ -605,7 +613,7 @@ function s:InsideQuoteLine(lnum)
     endif
 
     if !init && nline =~ '\\\@<!"\|\\\@<!\%o47'
-      let [hnum, lnum, sstr] = s:GetHereDocItem(snum)
+      let [hnum, lnum, sstr] = s:GetHereDocItem(snum, nline)
       if lnum > snum
         let snum = lnum
       elseif lnum < 1 && hnum
@@ -723,7 +731,8 @@ endfunction
 
 function s:InsideHereDoc()
   let lnum = line(".")
-  let [snum, hnum, sstr] = s:GetHereDocItem(lnum)
+  let line = getline(lnum)
+  let [snum, hnum, sstr] = s:GetHereDocItem(lnum, line)
 
   if hnum >= lnum || hnum < 1 && snum
     return 1
