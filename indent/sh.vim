@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-03-21 12:57:47+09 $
-"                   $Revision: 1.80 $
+" Id:               $Date: 2015-03-22 19:15:17+09 $
+"                   $Revision: 1.82 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -463,14 +463,9 @@ endfunction
 function s:GetHereDocPrevLine(lnum, line)
   let lnum = a:lnum
   let line = a:line
-  let flag = 1
   while s:GetPrevNonBlank(lnum)
     let lnum = s:prev_lnum
     let line = getline(lnum)
-    if flag
-      let flag = 0
-      let fline = line
-    endif
     let [snum, hnum, sstr] = s:GetHereDocItem(lnum, line)
     if hnum == lnum
           \ && sstr =~# '^\s*\%(done\>\|esac\>\|fi\>\|}\|)\)'
@@ -478,7 +473,7 @@ function s:GetHereDocPrevLine(lnum, line)
       break
     elseif hnum == lnum
       let [line, lnum] = [sstr, snum]
-    elseif fline =~ '^\s*#' && line =~ '^\s*#'
+    elseif line =~ '^\s*#'
       continue
     else
       break
@@ -510,9 +505,9 @@ function s:GetHereDocPairLine(lnum)
   else
     let estr = substitute(estr, '\s*\%(\\\@<!|\|\\\@<!>\|\\\@<!#\).*$', '', '')
   endif
-  if line =~ '<<-'
+  if len(estr) && line =~ '<<-'
     let estr = '\C\%(<<-\=\s*\\\n\)\@<!\_^\t*\M' . estr . '\m$'
-  else
+  elseif len(estr)
     let estr = '\C\%(<<-\=\s*\\\n\)\@<!\_^\M' . estr . '\m$'
   endif
 
@@ -538,19 +533,24 @@ function s:GetHereDocItem(lnum, ...)
   let save_cursor = getpos(".")
   call cursor(a:lnum, a:0 ? len(a:1) : 1)
   while search('\%(^\s*#.\{-}\)\@<!<<-\=\s*\S\+', 'bW')
+    let [estr, sstr] = s:GetHereDocPairLine(line("."))
+    if s:NotHereDocItem(sstr) || !len(estr)
+      continue
+    endif
     let snum = line(".")
-    let [estr, line] = s:GetHereDocPairLine(snum)
     let lnum = search(estr, 'nW')
+    let line = sstr
     if lnum < onum
       let lnum = onum
       let snum = pnum
-      let line = getline(snum)
+      let line = pline
       break
     elseif lnum < 1 || lnum > a:lnum
       break
     endif
     let onum = lnum
     let pnum = snum
+    let pline = line
   endwhile
   call setpos('.', save_cursor)
 
