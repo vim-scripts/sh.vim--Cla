@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-03-22 19:15:17+09 $
-"                   $Revision: 1.82 $
+" Id:               $Date: 2015-03-24 18:26:25+09 $
+"                   $Revision: 1.86 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -46,6 +46,12 @@ function GetShIndent()
   let cline = getline(v:lnum)
   let nnum = lnum
 
+  if cline =~ '^\s*$' && s:InsideQuoteLine(v:lnum)
+    return indent(lnum)
+  elseif s:InsideQuoteLine(v:lnum)
+    return indent(v:lnum)
+  endif
+
   while 1
     let [snum, hnum, sstr] = s:GetHereDocItem(lnum, line)
     if hnum == lnum
@@ -66,22 +72,20 @@ function GetShIndent()
     elseif hnum < 1 && snum
       return indent(lnum)
     else
-      if line =~ '^\s*#' && cline =~ '^\s*$'
-        return indent(lnum)
-      endif
-      let [line, lnum] = s:SkipCommentLine(line, lnum, 0)
-      if cline =~ '^\s*$' && s:InsideQuoteLine(v:lnum)
-        return indent(lnum)
-      elseif s:InsideQuoteLine(v:lnum)
-        return indent(v:lnum)
-      endif
-      if nnum == lnum
-        if line =~ '\\\@<!"\|\\\@<!\%o47' && s:InsideQuoteLine(lnum)
-          let [line, lnum] = s:SkipQuoteLine(line, lnum)
-        endif
+      if line =~ '\\\@<!"\|\\\@<!\%o47' && s:InsideQuoteLine(lnum)
+        let [line, lnum] = s:SkipQuoteLine(line, lnum)
         break
-      else
+      elseif line =~ '^\s*#' && cline =~ '^\s*$'
+        return indent(lnum)
+      elseif line =~ '^\s*#' && s:GetPrevNonBlank(lnum)
+        let lnum = s:prev_lnum
+        let line = getline(lnum)
         let nnum = lnum
+        unlet s:prev_lnum
+        continue
+      else
+        unlet! s:prev_lnum
+        break
       endif
     endif
   endwhile
@@ -318,12 +322,9 @@ function s:GetHideInsideQuoteJoinLine(lnum)
       let snum += 1
       continue
     elseif !qinit && nline =~ '<<-\=' && !s:NotHereDocItem(nline)
-      let lnum = get(s:GetHereDocItem(snum, nline)), 1)
-      if lnum < 1
-        break
-      else
-        let snum = lnum + 1
-        continue
+      let hlnum = get(s:GetHereDocItem(snum, nline), 1)
+      if hlnum > snum
+        let snum = hlnum
       endif
     elseif !qinit && nline =~ '"\|\%o47'
       let [nline, qinit] = s:GetInitQuote(nline, 1, 1)
