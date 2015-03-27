@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-03-25 16:41:40+09 $
-"                   $Revision: 1.87 $
+" Id:               $Date: 2015-03-27 10:48:18+09 $
+"                   $Revision: 1.88 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -263,6 +263,7 @@ endfunction
 
 function s:ClosedPairIndentPrev(lnum, line, item1, item2, ind)
   let ind = a:ind
+  let snum = 0
   let icount = 0
   let save_cursor = getpos(".")
   call cursor(a:lnum + 1, 1)
