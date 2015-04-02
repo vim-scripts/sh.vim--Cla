@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-04-01 10:13:28+09 $
-"                   $Revision: 1.91 $
+" Id:               $Date: 2015-04-02 14:37:38+09 $
+"                   $Revision: 1.92 $
 "
 " Description:      Please set vimrc the following line if to do
 "                   the indentation manually in case labels.
@@ -181,7 +181,7 @@ function s:PrevLineIndent3(line, lnum, nline, nnum, pline, cline, ind)
   let ind = a:ind
   if a:line =~# '^\s*case\>' && a:line !~# ';;\s*\<esac\>'
     let ind = s:InsideCaseIndent(ind, a:cline)
-  elseif a:nline =~ '\%(^\s*\|\\\|(\)\@<!)'
+  elseif a:line =~ '\%(\\\|(\)\@<!)' && a:nline !~ '^\s*)\s*\%(#.*\)\=$'
         \ && a:pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
         \ && a:pline !~ ';;\s*\%(#.*\)\=$'
     let ind = s:ClosedPairIndentPrev(a:nnum, a:nline, '(', ')', ind)
@@ -704,13 +704,8 @@ function s:SkipQuoteLine(line, lnum)
   endwhile
   unlet! s:prev_lnum
   let line = getline(lnum)
-  let line = substitute(
-        \ line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
-  let line = line . "|" .
-        \ substitute(
-        \ a:line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
-  let line = substitute(
-        \ line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
+  let line = substitute(line . a:line,
+        \ "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
 
   return [line, lnum]
 endfunction
