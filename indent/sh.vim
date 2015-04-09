@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-04-07 17:35:41+09 $
-"                   $Revision: 3.8 $
+" Id:               $Date: 2015-04-10 01:18:27+09 $
+"                   $Revision: 3.13 $
 "
 " Description:      Specifies a string search quoting lines from the variable
 "                   g:sh_indent_outside_quote_item. You can use regular
@@ -82,7 +82,7 @@ function GetShIndent()
       let ind = s:InsideHereDocIndent(snum, hnum, sstr, cline, ind, cind)
       return ind
     else
-      if g:sh_indent_auto_off
+      if g:sh_indent_auto_off && lnum > 1
             \ && line =~ '\\\@<!"\|\\\@<!\%o47' && qinitdic[lnum - 1]
         let [line, lnum] = s:SkipQuoteLine(line, lnum - 1, qinitdic)
         break
@@ -102,6 +102,7 @@ function GetShIndent()
   let ind = indent(lnum)
   let ind = s:MorePrevLineIndent(pline, line, ind)
   let ind = s:InsideCaseLabelIndent(pline, line, ind)
+  let line = s:HideCaseLabelLine(line, pline)
   if g:sh_indent_auto_off
     let ind = s:PrevLineIndent(line, lnum, pline, ind, qinitdic)
   else
@@ -143,32 +144,29 @@ endfunction
 
 function s:PrevLineIndent(line, lnum, pline, ind, ...)
   let ind = a:ind
-  if a:line =~ '^\s*[{(]\s*\%(#.*\)\=$'
-        \ || a:line =~ '^\h\w*\s*(\s*)\s*{\s*\%(#.*\)\=$'
-        \ || a:line =~ '\%(;\|&&\|||\)\s*\%({\|(\)\s*\%(#.*\)\=$'
+  if a:line =~# '^\s*\%(\h\w*\s*(\s*)\s*\)\=[{(]\s*\%(#.*\)\=$'
+        \. '\|^\s*function\s\+\S\+\%(\s\+{\|\s*(\s*)\s*[{(]\)\s*\%(#.*\)\=$'
+        \. '\|\%(;\|&&\|||\)\s*[{(]\s*\%(#.*\)\=$'
     let ind = ind + &sw
-  elseif a:line =~ '|\|&\|`\|('
-        \ || a:line =~ '^\s*[^(].\{-})' && a:line !~ ';;\s*\%(#.*\)\=$'
-        \ && (a:pline =~# '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
-    let line = s:HideAnyItemLine(a:line, a:lnum, a:pline)
-    if line =~ '\$('
-      let ind = ind + &sw * (len(split(line, '\$(', 1)) - 1)
+  elseif a:line !~ '^\s*#' && a:line =~ '|\|&\|`\|('
+    let line = s:HideAnyItemLine(a:line, a:lnum)
+    if line =~ '('
+      let ind = ind + &sw * (len(split(line, '(', 1)) - 1)
     endif
-    if a:0 && line =~ '`' && len(split(a:1['line'], '`', 1)) % 2 == 0
-      let ind = ind + &sw
-    elseif a:0 && line =~ '`'
+    let ind = s:CloseParenIndent(a:line, a:pline, line, ind)
+    if a:0 && line =~ '\\\@<!`' && len(split(a:1['line'], '\\\@<!`', 1)) % 2
       let ind = ind - &sw
+    elseif a:0 && line =~ '\\\@<!`'
+      let ind = ind + &sw
     endif
     for line in split(line, '|\|&\|`\|(')
       if len(line)
         let ind = s:PrevLineIndent2(line, ind)
       endif
     endfor
-  else
-    let line = s:HideAnyItemLine(a:line, a:lnum, a:pline)
-    if line =~ '\%(^\s*\|(\|\\\)\@<!)'
-      let ind = ind - &sw * (len(split(line, ')', 1)) - 1)
-    endif
+  elseif a:line !~ '^\s*#'
+    let line = s:HideAnyItemLine(a:line, a:lnum)
+    let ind = s:CloseParenIndent(a:line, a:pline, line, ind)
     let ind = s:PrevLineIndent2(line, ind)
   endif
 
@@ -194,6 +192,20 @@ function s:CurrentLineIndent(cline, ind)
   if a:cline =~# '^\s*\%(then\|do\|else\|elif\|fi\|done\|esac\)\>'
         \ || a:cline =~ '^\s*[})]'
     let ind = ind - &sw
+  endif
+
+  return ind
+endfunction
+
+function s:CloseParenIndent(line, pline, nline, ind)
+  let ind = a:ind
+  if a:nline =~ ')'
+        \ && a:pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
+        \ && a:pline !~ ';;\s*\%(#.*\)\=$'
+    if a:line =~ '^\s*)'
+      let ind = ind + &sw
+    endif
+    let ind = ind - &sw * (len(split(a:nline, ')', 1)) - 1)
   endif
 
   return ind
@@ -234,31 +246,45 @@ function s:GetNextNonBlank(lnum)
   return s:next_lnum
 endfunction
 
-function s:HideAnyItemLine(line, lnum, pline)
+function s:HideCaseLabelLine(line, pline)
+  let line = a:line
+  if a:line =~ '^\s*[^(].\{-})' && a:line !~ ';;\s*\%(#.*\)\=$'
+        \ && (a:pline =~# '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
+    let line = substitute(line,
+          \ '\\\%o47\|'. "'[^']*'". '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
+    let line = substitute(line, '^\s*.\{-}\\\@<!)', '', '')
+  endif
+
+  return line
+endfunction
+
+function s:HideAnyItemLine(line, lnum)
   let line = a:line
   if line =~ '\%(\${\h\w*#\=\|\${\=\|\\\)\@<!#'
     let sum = s:InsideComment(a:lnum)
     if sum
       let line = substitute(line, '^\(.\{' . sum . '}\)#.*$', '\1', '')
     endif
-    let line = substitute(
-          \ line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
+    let line = substitute(line,
+          \ '\\\%o47\|'. "'[^']*'". '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
   elseif line =~ "'"
-    let line = substitute(line, "'[^']*'", '', 'g')
+    let line = substitute(line, '\\\%o47\|'. "'[^']*'", '', 'g')
   endif
-  let line = substitute(
-        \ line, '\$\=([^()]*\\\@<!)\|\(\\\@<!\\*`\).\{-}\\\@<!\1', '', 'g')
-  let len = len(line)
-  while 1
-    let line = substitute(line, '\$\=([^()]*\\\@<!)', '', 'g')
-    if len == len(line)
-      break
-    else
-      let len = len(line)
-    endif
-  endwhile
-  if a:pline =~# '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$'
-    let line = substitute(line, '^\s*.\{-})', '', '')
+  if line =~ '"' && len(split(line, '"', 1)) % 2
+    let line = substitute(line, '\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
+  endif
+  if line =~ '(\|)\|`'
+    let line = substitute(line,
+          \ '\\[()]\|\$\=([^()]*\\\@<!)\|\(\\\@<!\\*`\).\{-}\\\@<!\1', '', 'g')
+    let len = len(line)
+    while 1
+      let line = substitute(line, '\$\=([^()]*\\\@<!)', '', 'g')
+      if len == len(line)
+        break
+      else
+        let len = len(line)
+      endif
+    endwhile
   endif
 
   return line
@@ -429,32 +455,32 @@ function s:GetJoinLineAndQuoteInit(lnum)
       if sum
         let nline = substitute(nline, '^\(.\{' . sum . '}\)#.*$', '\1', '')
       endif
-      let nline = substitute(
-            \ nline, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
+      let nline = substitute(nline,
+            \ '\\\%o47\|'. "'[^']*'". '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
     elseif !qinit && nline =~ '\%o47'
-      let nline = substitute(nline, "'[^']*'", '', 'g')
+      let nline = substitute(nline, '\\\%o47\|'. "'[^']*'", '', 'g')
     endif
     if nline =~ '"\|\%o47\|`'
       let line = line . nline
     endif
 
-    if !qinit && nline =~ '\\\@<!"\|\\\@<!\%o47'
+    if !qinit && nline =~ '\\\@<!"\|\%o47'
       let qinit = s:GetInitQuote(nline)
     endif
-    if qinit == 2 && len(split(line, '\\\@<!\%o47', 1)) % 2 == 0
+    if qinit == 2 && len(split(line, '\%o47', 1)) % 2 == 0
       let qinit = 3
-    elseif qinit == 3 && len(split(line, '\\\@<!\%o47', 1)) % 2
+    elseif qinit == 3 && len(split(line, '\%o47', 1)) % 2
           \ && len(split(line, '\\\@<!"', 1)) % 2
       let line = substitute(
             \ line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
       let qinit = 0
-    elseif qinit == 3 && len(split(line, '\\\@<!\%o47', 1)) % 2
+    elseif qinit == 3 && len(split(line, '\%o47', 1)) % 2
       let qinit = 2
     elseif qinit == 2 && len(split(line, '\\\@<!"', 1)) % 2
       let line = substitute(
             \ line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
       let qinit = 0
-    elseif qinit == 1 && len(split(line, '\\\@<!\%o47', 1)) % 2
+    elseif qinit == 1 && len(split(line, '\%o47', 1)) % 2
       let line = substitute(
             \ line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
       let qinit = 0
@@ -470,9 +496,9 @@ endfunction
 function s:GetInitQuote(line)
   let init = 0
   let line = substitute(
-            \ a:line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
+        \ a:line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
   let dq = match(line, '\\\@<!"')
-  let sq = match(line, '\\\@<!\%o47')
+  let sq = match(line, '\%o47')
   if dq > -1 && sq < 0 || dq > -1 && dq < sq
     let init = 2
   elseif sq > -1 && dq < 0 || sq > -1 && sq < dq
@@ -516,7 +542,7 @@ function s:InsideComment(lnum)
       return sum
     elseif str == '\'
       let bslash += 1
-    elseif str == "'" && !squote && !dquote
+    elseif str == "'" && !squote && !dquote && !bslash
       let squote = 1
       let bslash = 0
     elseif str == "'" && squote
