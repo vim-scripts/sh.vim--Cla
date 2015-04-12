@@ -1,16 +1,20 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-04-10 22:56:16+09 $
-"                   $Revision: 3.16 $
+" Id:               $Date: 2015-04-12 12:59:48+09 $
+"                   $Revision: 3.19 $
 "
-" Description:      Specifies a string search quoting lines from the variable
+" Description:      Set the following line if you do not use automatic
+"                   indentation in lines inside the double quotes.
+"                   let g:sh_indent_double_quote_auto_off = 0
+"
+"                   Specifies a string search quoting lines from the variable
 "                   g:sh_indent_outside_quote_item. You can use regular
 "                   expressions can be used by Vim. If the unlet or string
 "                   empty to reset. The default value is '^\h\w*\s*(\s*)'
 "
 "                   Set the following line if you do not use a mechanism to
-"                   turn off Auto-indent in single quoting lines. Works even
+"                   turn off Auto-indent in quoting lines. Works even
 "                   without the variable g:sh_indent_outside_quote_item.
 "                   let g:sh_indent_auto_off = 0
 
@@ -41,6 +45,10 @@ if !exists("g:sh_indent_auto_off")
   let g:sh_indent_auto_off = 1
 endif
 
+if !exists("g:sh_indent_double_quote_auto_off")
+  let g:sh_indent_double_quote_auto_off = 1
+endif
+
 function GetShIndent()
   let lnum = prevnonblank(v:lnum - 1)
   if lnum == 0
@@ -61,10 +69,18 @@ function GetShIndent()
     endif
 
     let qinitdic = s:GetJoinLineAndQuoteInit(lnum)
-    if cline =~ '^\s*$' && qinitdic[lnum] % 2
-      return indent(lnum)
-    elseif qinitdic[lnum] % 2
-      return indent(v:lnum)
+    if g:sh_indent_double_quote_auto_off
+      if cline =~ '^\s*$' && qinitdic[lnum]
+        return indent(lnum)
+      elseif qinitdic[lnum]
+        return indent(v:lnum)
+      endif
+    else
+      if cline =~ '^\s*$' && qinitdic[lnum] % 2
+        return indent(lnum)
+      elseif qinitdic[lnum] % 2
+        return indent(v:lnum)
+      endif
     endif
   endif
 
@@ -72,9 +88,6 @@ function GetShIndent()
     let [snum, hnum, sstr] = s:GetHereDocItem(lnum, line)
     if hnum == lnum
       let [line, lnum] = [sstr, snum]
-      if line =~ '\\$'
-        let line = substitute(line, '\\$', '', '')
-      endif
       break
     elseif hnum >= v:lnum
       let ind = indent(lnum)
@@ -119,13 +132,13 @@ function s:MorePrevLineIndent(pline, pnum, line, ind)
   let pline = a:pline
   let pnum = a:pnum
   if a:pline !~ '\\$' && a:line =~ '\\$'
+        \ && a:line !~ '<<-\=\s*\\$'
         \ && a:pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
         \ && a:pline !~ ';;\s*\%(#.*\)\=$'
     let ind = ind + &sw
   elseif a:pline =~ '\\$' && a:line !~ '\\$'
-    let [pline, pnum] = s:JoinContinueLine(pline, pnum)
-    if a:pnum == pnum
-          \ || pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
+    let [pline, pnum] = s:JoinContinueLine(a:pline, a:pnum)
+    if pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
           \ && pline !~ ';;\s*\%(#.*\)\=$'
       let ind = ind - &sw
     endif
@@ -277,7 +290,7 @@ endfunction
 function s:HideAnyItemLine(line, lnum)
   let line = a:line
   if line =~ '\%(\${\h\w*#\=\|\${\=\|\\\)\@<!#'
-    let sum = s:InsideComment(a:lnum)
+    let sum = s:InsideCommentOrQuote(line)
     if sum
       let line = substitute(line, '^\(.\{' . sum . '}\)#.*$', '\1', '')
     endif
@@ -344,13 +357,13 @@ function s:OnOrNotItem(line, item)
   endif
 endfunction
 
-function s:GetHereDocItem(lnum, ...)
+function s:GetHereDocItem(lnum, line)
   let snum = 0
   let lnum = 0
   let onum = 0
   let line = ""
   let save_cursor = getpos(".")
-  call cursor(a:lnum, a:0 ? len(a:1) : 1)
+  call cursor(a:lnum, len(a:line))
   while search('\%(^\s*#.\{-}\)\@<!<<-\=\s*\S\+', 'bW')
     let lsum = line(".")
     let sstr = getline(lsum)
@@ -457,6 +470,7 @@ function s:GetJoinLineAndQuoteInit(lnum)
   let qinitdic = {}
   while snum <= a:lnum
     let nline = getline(snum)
+    let fline = nline
     if !qinit && nline =~ '^\s*#'
       let qinitdic[snum] = qinit
       let snum += 1
@@ -467,7 +481,7 @@ function s:GetJoinLineAndQuoteInit(lnum)
         let snum = hlnum
       endif
     elseif !qinit && nline =~ '\%(\${\h\w*#\=\|\${\=\|\\\)\@<!#'
-      let sum = s:InsideComment(snum)
+      let sum = s:InsideCommentOrQuote(nline)
       if sum
         let nline = substitute(nline, '^\(.\{' . sum . '}\)#.*$', '\1', '')
       endif
@@ -475,26 +489,37 @@ function s:GetJoinLineAndQuoteInit(lnum)
             \ '\\\%o47\|'. "'[^']*'". '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
     elseif !qinit && nline =~ '\%o47'
       let nline = substitute(nline, '\\\%o47\|'. "'[^']*'", '', 'g')
-    endif
-    if qinit == 2 && nline =~ '\%o47'
-      let nline = substitute(nline, '\%o47', '', 'g')
-    elseif qinit == 1 && nline =~ '\%o47'
-      let nline = substitute(nline, '\\\%o47', '', 'g')
+    elseif !qinit && nline =~ '"' && len(split(nline, '\\\@<!"', 1)) % 2
+      let nline = substitute(nline, '\\\@<!".\{-}\\\@<!"', '', 'g')
     endif
     if nline =~ '"\|\%o47\|`'
       let line = line . nline
     endif
 
     if !qinit && nline =~ '\\\@<!"\|\\\@<!\%o47'
-      let qinit = s:GetInitQuote(nline)
-    elseif qinit == 2 && len(split(line, '\\\@<!"', 1)) % 2
-      let line = substitute(
-            \ line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
-      let qinit = 0
-    elseif qinit == 1 && len(split(line, '\\\@<!\%o47', 1)) % 2
-      let line = substitute(
-            \ line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
-      let qinit = 0
+      let init1 = len(split(line, '\\\@<!\%o47', 1)) % 2
+      let init2 = len(split(line, '\\\@<!"', 1)) % 2
+      if init1 && init2
+        let line = substitute(line, '\\\%o47\|'
+              \. "'[^']*'". '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
+        let qinit = 0
+      elseif !init1 && init2
+        let line = substitute(line, '\\\@<!".\{-}\\\@<!"', '', 'g')
+        let qinit = 1
+      elseif init1 && !init2
+        let line = substitute(line, '\\\%o47\|'. "'[^']*'", '', 'g')
+        let qinit = 2
+      else
+        let qinit = s:InsideCommentOrQuote(fline, qinit)
+      endif
+    elseif qinit == 2 && nline =~ '\\\@<!"'
+          \ && len(split(line, '\\\@<!"', 1)) % 2
+      let line = substitute(line, '\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
+      let qinit = s:InsideQuoteReverse(fline, qinit)
+    elseif qinit == 1 && nline =~ '\\\@<!\%o47'
+          \ && len(split(line, '\\\@<!\%o47', 1)) % 2
+      let line = substitute(line, '\\\%o47\|'. "'[^']*'", '', 'g')
+      let qinit = s:InsideQuoteReverse(fline, qinit)
     endif
     let qinitdic[snum] = qinit
     let snum += 1
@@ -504,38 +529,19 @@ function s:GetJoinLineAndQuoteInit(lnum)
   return qinitdic
 endfunction
 
-function s:GetInitQuote(line)
-  let init = 0
-  let line = substitute(
-        \ a:line, "'[^']*'" . '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
-  let dq = match(line, '\\\@<!"')
-  let sq = match(line, '\\\@<!\%o47')
-  if dq > -1 && sq < 0 || dq > -1 && dq < sq
-    let init = 2
-  elseif sq > -1 && dq < 0 || sq > -1 && sq < dq
-    let init = 1
-  endif
-
-  return init
-endfunction
-
 function s:SkipQuoteLine(line, lnum, qinitdic)
   let lnum = a:lnum
-  let pnum = lnum
-  let init = a:qinitdic[lnum] % 2
-  while (init && a:qinitdic[lnum] % 2 || !init && a:qinitdic[lnum])
-        \ && s:GetPrevNonBlank(lnum)
-    let pnum = lnum
+  while s:GetPrevNonBlank(lnum) && a:qinitdic[s:prev_lnum]
     let lnum = s:prev_lnum
   endwhile
   unlet! s:prev_lnum
-  let line = getline(pnum) . a:line
+  let line = getline(lnum). a:line
 
-  return [line, pnum]
+  return [line, lnum]
 endfunction
 
-function s:InsideComment(lnum)
-  let line = getline(a:lnum)
+function s:InsideCommentOrQuote(line, ...)
+  let line = a:line
   let cnum = len(line)
   let squote = 0
   let dquote = 0
@@ -549,8 +555,10 @@ function s:InsideComment(lnum)
   let sum = 0
   while sum < cnum
     let str = strpart(line, sum, 1)
-    if str == '#' && !squote && !dquote && !bslash && sum > ssum
+    if str == '#' && !squote && !dquote && !bslash && sum > ssum && !a:0
       return sum
+    elseif str == '#' && !squote && !dquote && !bslash && sum > ssum
+      break
     elseif str == '\'
       let bslash += 1
     elseif str == "'" && !squote && !dquote && !bslash
@@ -573,7 +581,48 @@ function s:InsideComment(lnum)
     let sum += 1
   endwhile
 
-  return 0
+  if a:0 && a:1 != 1 && squote
+    return 1
+  elseif a:0 && a:1 != 2 && dquote
+    return 2
+  else
+    return 0
+  endif
+endfunction
+
+function s:InsideQuoteReverse(line, init)
+  let line = a:line
+  let sum = len(line) - 1
+  let squote = 0
+  let dquote = 0
+  while sum > 0
+    let str = strpart(line, sum, 1)
+    if str == '#'
+      let squote = 0
+      let dquote = 0
+      break
+    elseif str == '\' && (squote == sum + 1 || dquote == sum + 1)
+      let squote = 0
+      let dquote = 0
+    elseif str == "'" && !squote && !dquote
+      let squote = sum
+    elseif str == "'" && squote
+      let squote = 0
+    elseif str == '"' && !squote && !dquote
+      let dquote = sum
+    elseif str == '"' && dquote
+      let dquote = 0
+    endif
+    let sum -= 1
+  endwhile
+
+  if a:init == 1 && dquote
+    return 2
+  elseif a:init == 2 && squote
+    return 1
+  else
+    return 0
+  endif
 endfunction
 
 let &cpo = s:cpo_save
