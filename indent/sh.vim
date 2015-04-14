@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-04-12 12:59:48+09 $
-"                   $Revision: 3.19 $
+" Id:               $Date: 2015-04-14 11:28:44+09 $
+"                   $Revision: 3.20 $
 "
 " Description:      Set the following line if you do not use automatic
 "                   indentation in lines inside the double quotes.
@@ -64,7 +64,7 @@ function GetShIndent()
   let cline = getline(v:lnum)
   if g:sh_indent_auto_off
     if !exists("g:sh_indent_outside_quote_item")
-          \ || !len(g:sh_indent_outside_quote_item)
+          \ || empty(g:sh_indent_outside_quote_item)
       let g:sh_indent_outside_quote_item = s:OutSideQuoteItem
     endif
 
@@ -117,9 +117,9 @@ function GetShIndent()
   let [pline, ind] = s:MorePrevLineIndent(pline, pnum, line, ind)
   let ind = s:InsideCaseLabelIndent(pline, line, ind)
   let line = s:HideCaseLabelLine(line, pline)
-  if g:sh_indent_auto_off
+  if g:sh_indent_auto_off && !empty(line)
     let ind = s:PrevLineIndent(line, lnum, pline, ind, qinitdic)
-  else
+  elseif !empty(line)
     let ind = s:PrevLineIndent(line, lnum, pline, ind)
   endif
   let ind = s:CurrentLineIndent(cline, ind)
@@ -130,14 +130,13 @@ endfunction
 function s:MorePrevLineIndent(pline, pnum, line, ind)
   let ind = a:ind
   let pline = a:pline
-  let pnum = a:pnum
   if a:pline !~ '\\$' && a:line =~ '\\$'
         \ && a:line !~ '<<-\=\s*\\$'
         \ && a:pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
         \ && a:pline !~ ';;\s*\%(#.*\)\=$'
     let ind = ind + &sw
   elseif a:pline =~ '\\$' && a:line !~ '\\$'
-    let [pline, pnum] = s:JoinContinueLine(a:pline, a:pnum)
+    let pline = s:JoinContinueLine(a:pline, a:pnum)
     if pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
           \ && pline !~ ';;\s*\%(#.*\)\=$'
       let ind = ind - &sw
@@ -171,7 +170,7 @@ function s:PrevLineIndent(line, lnum, pline, ind, ...)
         \. '\|^\s*function\s\+\S\+\%(\s\+{\|\s*(\s*)\s*[{(]\)\s*\%(#.*\)\=$'
         \. '\|\%(;\|&&\|||\)\s*[{(]\s*\%(#.*\)\=$'
     let ind = ind + &sw
-  elseif a:line !~ '^\s*#' && a:line =~ '|\|&\|`\|('
+  elseif a:line !~ '^\s*#'
     let line = s:HideAnyItemLine(a:line, a:lnum)
     if line =~ '('
       let ind = ind + &sw * (len(split(line, '(', 1)) - 1)
@@ -182,15 +181,15 @@ function s:PrevLineIndent(line, lnum, pline, ind, ...)
     elseif a:0 && line =~ '\\\@<!`'
       let ind = ind + &sw
     endif
-    for line in split(line, '|\|&\|`\|(')
-      if len(line)
-        let ind = s:PrevLineIndent2(line, ind)
-      endif
-    endfor
-  elseif a:line !~ '^\s*#'
-    let line = s:HideAnyItemLine(a:line, a:lnum)
-    let ind = s:CloseParenIndent(a:line, a:pline, line, ind)
-    let ind = s:PrevLineIndent2(line, ind)
+    if line =~ '|\|&\|`\|('
+      for line in split(line, '|\|&\|`\|(')
+        if !empty(line)
+          let ind = s:PrevLineIndent2(line, ind)
+        endif
+      endfor
+    else
+      let ind = s:PrevLineIndent2(line, ind)
+    endif
   endif
 
   return ind
@@ -260,7 +259,7 @@ function s:JoinContinueLine(line, lnum)
   endwhile
   unlet! s:prev_lnum
 
-  return [line, lnum]
+  return line
 endfunction
 
 function s:GetPrevNonBlank(lnum)
@@ -279,9 +278,12 @@ function s:HideCaseLabelLine(line, pline)
   let line = a:line
   if a:line =~ '^\s*[^(].\{-})' && a:line !~ ';;\s*\%(#.*\)\=$'
         \ && (a:pline =~# '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
-    let line = substitute(line, '\\\%o47\|\\\@<!\%o47.\{-}\\\@<!\%o47'
+    let line = substitute(line, '\%o47.\{-}\\\@<!\%o47\|\\\+\%o47'
           \. '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
-    let line = substitute(line, '^\s*.\{-}\\\@<!)', '', '')
+    let line = substitute(line, '^\s*.\{-}\\\@<!)\s*\%(#.*$\)\=', '', '')
+  elseif a:line =~ '\\$'
+        \ && (a:pline =~# '^\s*case\>' || a:pline =~ ';;\s*\%(#.*\)\=$')
+    let line = ""
   endif
 
   return line
@@ -294,10 +296,10 @@ function s:HideAnyItemLine(line, lnum)
     if sum
       let line = substitute(line, '^\(.\{' . sum . '}\)#.*$', '\1', '')
     endif
-    let line = substitute(line, '\\\%o47\|\\\@<!\%o47.\{-}\\\@<!\%o47'
+    let line = substitute(line, '\%o47.\{-}\\\@<!\%o47\|\\\+\%o47'
           \. '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
   elseif line =~ "'"
-    let line = substitute(line, '\\\%o47\|\\\@<!\%o47.\{-}\\\@<!\%o47', '', 'g')
+    let line = substitute(line, '\%o47.\{-}\\\@<!\%o47\|\\\+\%o47', '', 'g')
   endif
   if line =~ '"' && len(split(line, '"', 1)) % 2
     let line = substitute(line, '\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
@@ -336,9 +338,9 @@ function s:GetHereDocPairLine(line, lnum)
   else
     let estr = substitute(estr, '\%(\s*|\|\s*>\|\s\+#\).*$', '', '')
   endif
-  if len(estr) && a:line =~ '<<-'
+  if !empty(estr) && a:line =~ '<<-'
     let estr = '\C\%(<<-\=\s*\\\n\)\@<!\_^\t*\M' . estr . '\m$'
-  elseif len(estr)
+  elseif !empty(estr)
     let estr = '\C\%(<<\s*\\\n\)\@<!\_^\M' . estr . '\m$'
   endif
 
@@ -346,7 +348,7 @@ function s:GetHereDocPairLine(line, lnum)
 endfunction
 
 function s:OnOrNotItem(line, item)
-  let line = substitute(a:line, '\\\@<!\%o47.\{-}\\\@<!\%o47'
+  let line = substitute(a:line, '\%o47.\{-}\\\@<!\%o47\|\\\+\%o47'
         \. '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
   let line = substitute(line, '\%(\${\h\w*#\=\|\${\=\|\\\)\@<!#.*$', '', '')
 
@@ -372,7 +374,7 @@ function s:GetHereDocItem(lnum, line)
     else
       continue
     endif
-    if !len(estr)
+    if empty(estr)
       continue
     endif
     let snum = lsum
@@ -476,21 +478,33 @@ function s:GetJoinLineAndQuoteInit(lnum)
       let snum += 1
       continue
     elseif !qinit && nline =~ '<<-\=' && s:OnOrNotItem(nline, '<<')
-      let hlnum = get(s:GetHereDocItem(snum, nline), 1)
-      if hlnum > snum
-        let snum = hlnum
+      let [slnum, hlnum, sstr] = s:GetHereDocItem(snum, fline)
+      if slnum && hlnum > snum
+        while snum <= hlnum
+          let qinitdic[snum] = qinit
+          let snum += 1
+        endwhile
+        continue
+      elseif slnum
+        while snum <= a:lnum
+          let qinitdic[snum] = qinit
+          let snum += 1
+        endwhile
+        break
       endif
     elseif !qinit && nline =~ '\%(\${\h\w*#\=\|\${\=\|\\\)\@<!#'
       let sum = s:InsideCommentOrQuote(nline)
       if sum
         let nline = substitute(nline, '^\(.\{' . sum . '}\)#.*$', '\1', '')
       endif
-      let nline = substitute(nline,
-            \ '\\\%o47\|'. "'[^']*'". '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
+      let nline = substitute(nline, '\%o47.\{-}\\\@<!\%o47\|\\\+\%o47'
+            \. '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
     elseif !qinit && nline =~ '\%o47'
-      let nline = substitute(nline, '\\\%o47\|'. "'[^']*'", '', 'g')
+      let nline = substitute(nline, '\%o47.\{-}\\\@<!\%o47\|\\\+\%o47', '', 'g')
     elseif !qinit && nline =~ '"' && len(split(nline, '\\\@<!"', 1)) % 2
       let nline = substitute(nline, '\\\@<!".\{-}\\\@<!"', '', 'g')
+    elseif qinit == 1 && nline =~ '\%o47'
+      let nline = substitute(nline, '\%o47.\{-}\\\@<!\%o47', '', 'g')
     endif
     if nline =~ '"\|\%o47\|`'
       let line = line . nline
@@ -500,14 +514,14 @@ function s:GetJoinLineAndQuoteInit(lnum)
       let init1 = len(split(line, '\\\@<!\%o47', 1)) % 2
       let init2 = len(split(line, '\\\@<!"', 1)) % 2
       if init1 && init2
-        let line = substitute(line, '\\\%o47\|'
-              \. "'[^']*'". '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
+        let line = substitute(line, '\%o47.\{-}\\\@<!\%o47\|\\\+\%o47'
+              \. '\|\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
         let qinit = 0
       elseif !init1 && init2
-        let line = substitute(line, '\\\@<!".\{-}\\\@<!"', '', 'g')
+        let line = substitute(line, '\(\\\@<!\\*"\).\{-}\\\@<!\1', '', 'g')
         let qinit = 1
       elseif init1 && !init2
-        let line = substitute(line, '\\\%o47\|'. "'[^']*'", '', 'g')
+        let line = substitute(line, '\%o47.\{-}\\\@<!\%o47\|\\\+\%o47', '', 'g')
         let qinit = 2
       else
         let qinit = s:InsideCommentOrQuote(fline, qinit)
@@ -518,7 +532,7 @@ function s:GetJoinLineAndQuoteInit(lnum)
       let qinit = s:InsideQuoteReverse(fline, qinit)
     elseif qinit == 1 && nline =~ '\\\@<!\%o47'
           \ && len(split(line, '\\\@<!\%o47', 1)) % 2
-      let line = substitute(line, '\\\%o47\|'. "'[^']*'", '', 'g')
+      let line = substitute(line, '\%o47.\{-}\\\@<!\%o47\|\\\+\%o47', '', 'g')
       let qinit = s:InsideQuoteReverse(fline, qinit)
     endif
     let qinitdic[snum] = qinit
