@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-04-17 09:06:15+09 $
-"                   $Revision: 3.26 $
+" Id:               $Date: 2015-04-17 14:32:56+09 $
+"                   $Revision: 3.28 $
 "
 " Description:      Set the following line if you do not use automatic
 "                   indentation in lines inside the double quotes.
@@ -12,7 +12,7 @@
 "                   g:sh_indent_outside_quote_item. You can use regular
 "                   expressions can be used by Vim. If the unlet or string
 "                   empty to reset. The default value is the following line.
-"                   '^\s*[^#].\{-}[^<]<<-\=\s*[^<]\|^\h\w*\s*(\s*)'
+"                   '^\s*\%([^#].\{-}[^<]\)\=<<-\=\s*[^<]\|^\h\w*\s*(\s*)'
 "
 "                   Set the following line if you do not use a mechanism to
 "                   turn off Auto-indent in quoting lines. Works even
@@ -41,7 +41,7 @@ endif
 let s:cpo_save = &cpo
 set cpo&vim
 
-let s:OutSideQuoteItem = '^\s*[^#].\{-}[^<]<<-\=\s*[^<]\|^\h\w*\s*(\s*)'
+let s:OutSideQuoteItem = '^\s*\%([^#].\{-}[^<]\)\=<<-\=\s*[^<]\|^\h\w*\s*(\s*)'
 if !exists("g:sh_indent_outside_quote_item")
   let g:sh_indent_outside_quote_item = s:OutSideQuoteItem
 endif
@@ -143,7 +143,7 @@ function s:MorePrevLineIndent(pline, pnum, line, ind)
   let ind = a:ind
   let pline = a:pline
   if a:pline !~ '\\$' && a:line =~ '\\$'
-        \ && a:line !~ '<<-\=\s*\\$'
+        \ && a:line !~ '\%(^\s*\|[^<]\)<<-\=\s*\\$'
         \ && a:pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
         \ && a:pline !~ ';;\s*\%(#.*\)\=$'
     let ind = ind + &sw
@@ -382,10 +382,10 @@ function s:GetHereDocItem(lnum, line)
   let line = ""
   let save_cursor = getpos(".")
   call cursor(a:lnum, len(a:line))
-  while search('\%(^\s*#.\{-}\)\@<!<<-\=\s*\S\+', 'bW')
+  while search('^\s*\%([^#].\{-}[^<]\)\=<<-\=\s*[^<]', 'bW')
     let lsum = line(".")
     let sstr = getline(lsum)
-    if s:OnOrNotItem(sstr, '[^<]<<[^<]')
+    if s:OnOrNotItem(sstr, '\%(^\s*\|[^<]\)<<[^<]')
       let estr = s:GetHereDocPairLine(sstr, lsum)
     else
       continue
@@ -403,7 +403,7 @@ function s:GetHereDocItem(lnum, line)
       break
     elseif lnum > a:lnum
       break
-    elseif snum && lnum < 1
+    elseif snum && !lnum
       continue
     endif
     let onum = lnum
@@ -493,7 +493,8 @@ function s:GetJoinLineAndQuoteInit(lnum)
       let qinitdic[snum] = qinit
       let snum += 1
       continue
-    elseif !qinit && nline =~ '[^<]<<[^<]' && s:OnOrNotItem(nline, '[^<]<<[^<]')
+    elseif !qinit && nline =~ '\%(^\s*\|[^<]\)<<[^<]'
+          \ && s:OnOrNotItem(nline, '\%(^\s*\|[^<]\)<<[^<]')
       let [slnum, hlnum, sstr] = s:GetHereDocItem(snum, fline)
       if slnum && slnum < snum
         let snum = slnum
@@ -504,7 +505,7 @@ function s:GetJoinLineAndQuoteInit(lnum)
           let snum += 1
         endwhile
         continue
-      elseif slnum && hlnum >= a:lnum
+      elseif slnum
         while snum <= a:lnum
           let qinitdic[snum] = qinit
           let snum += 1
