@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-04-21 15:16:49+09 $
-"                   $Revision: 3.35 $
+" Id:               $Date: 2015-12-27 15:08:29+09 $
+"                   $Revision: 3.36 $
 "
 " Description:      Set the following line if you do not use a mechanism to
 "                   turn off Auto-indent in lines inside the double-quotes.
@@ -139,7 +139,7 @@ function GetShIndent()
   elseif !empty(line)
     let ind = s:PrevLineIndent(line, lnum, pline, ind)
   endif
-  let ind = s:CurrentLineIndent(cline, ind)
+  let ind = s:CurrentLineIndent(line, cline, ind)
 
   return ind
 endfunction
@@ -227,13 +227,16 @@ function s:PrevLineIndent2(line, ind)
   return ind
 endfunction
 
-function s:CurrentLineIndent(cline, ind)
+function s:CurrentLineIndent(line, cline, ind)
   let ind = a:ind
   if a:cline =~# '^\s*\%(then\|do\|else\|elif\|fi\|done\)\>'
         \ || a:cline =~ '^\s*[})]'
     let ind = ind - &sw
   elseif a:cline =~# '^\s*esac\>' && g:sh_indent_case_labels
     let ind = ind - &sw / g:sh_indent_case_labels
+  endif
+  if a:cline =~# '^\s*esac\>' && a:line !~ ';;\s*\%(#.*\)\=$'
+    let ind = ind - &sw
   endif
 
   return ind
@@ -511,7 +514,7 @@ function s:GetJoinLineAndQuoteInit(lnum)
     elseif !qinit && nline =~ s:StartHereDocItem
           \ && s:OnOrNotItem(nline, '\%(^\s*\|[^<]\)<<-\=')
       let [slnum, hlnum, sstr] = s:GetHereDocItem(snum, fline)
-      if slnum && hlnum > snum && hlnum < a:lnum
+      if slnum && hlnum > snum && hlnum <= a:lnum
         while snum <= hlnum
           let qinitdic[snum] = qinit
           let snum += 1
