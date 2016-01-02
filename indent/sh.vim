@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2015-12-31 12:16:05+09 $
-"                   $Revision: 3.40 $
+" Id:               $Date: 2016-01-02 18:14:18+09 $
+"                   $Revision: 3.42 $
 "
 " Description:      Set the following line if you do not use a mechanism to
 "                   turn off Auto-indent in lines inside the double-quotes.
@@ -157,6 +157,7 @@ function s:MorePrevLineIndent(pline, pnum, line, ind)
     let pline = s:JoinContinueLine(a:pline, a:pnum)
     if pline !~# '^\s*case\>\|^\s*[^(].\{-})\s*case\>'
           \ && pline !~ ';;\s*\%(#.*\)\=$'
+          \ || a:line =~ ';;\s*\%(#.*\)\=$'
       let ind = ind - &sw
     endif
   endif
@@ -326,6 +327,7 @@ function s:HideAnyItemLine(line, lnum)
     endif
   endif
   if line =~ '"'
+    let line = substitute(line, '\\\@<!\%(\\\\\)\+"', '"', 'g')
     let line = substitute(line, '\(\\\@<!\\*"\).\{-}\\\@<!\1\|\\\+"', '', 'g')
   endif
   if line =~ '\%o47'
@@ -519,18 +521,19 @@ function s:GetJoinLineAndQuoteInit(lnum)
     elseif !qinit && nline =~ s:StartHereDocItem
           \ && s:OnOrNotItem(nline, '\%(^\s*\|[^<]\)<<-\=')
       let [slnum, hlnum, sstr] = s:GetHereDocItem(snum, fline)
-      if slnum && hlnum > snum && hlnum <= a:lnum
-        while snum <= hlnum
-          let qinitdic[snum] = qinit
-          let snum += 1
-        endwhile
-        continue
-      elseif slnum && hlnum && hlnum < slnum || slnum && !hlnum
+      if slnum && hlnum > snum && hlnum >= a:lnum
+            \ || slnum && hlnum && hlnum < slnum || slnum && !hlnum
         while snum <= a:lnum
           let qinitdic[snum] = qinit
           let snum += 1
         endwhile
         break
+      elseif slnum && hlnum > snum && hlnum < a:lnum
+        while snum <= hlnum
+          let qinitdic[snum] = qinit
+          let snum += 1
+        endwhile
+        continue
       endif
     elseif !qinit && nline =~ '\%(\${\%(\h\w*\|\d\+\)#\=\|\${\=\|\\\)\@<!#'
       let sum = s:InsideCommentOrQuote(nline)
@@ -538,10 +541,13 @@ function s:GetJoinLineAndQuoteInit(lnum)
         let nline = substitute(nline, '^\(.\{' . sum . '}\)#.*$', '\1', '')
       endif
     endif
-    if nline =~ '"'
+    if nline =~ '"' && !qinit
       let nline = substitute(nline, '\\\@<!\%(\\\\\)\+"', '"', 'g')
       let nline = substitute(nline,
             \ '\(\\\@<!\\*"\).\{-}\\\@<!\1\|\\\+"', '', 'g')
+    elseif nline =~ '"' && qinit == 2
+      let nline = substitute(nline, '\\\@<!\%(\\\\\)\+"', '"', 'g')
+      let nline = substitute(nline, '\(\\\+"\).\{-}\\\@<!\1\|\\\+"', '', 'g')
     endif
     if nline =~ '\%o47' && !qinit
       let nline = substitute(nline,
