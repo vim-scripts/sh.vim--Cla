@@ -1,8 +1,8 @@
 " Vim indent file
 " Language:         Shell Script
 " Maintainer:       Clavelito <maromomo@hotmail.com>
-" Id:               $Date: 2016-01-02 18:14:18+09 $
-"                   $Revision: 3.42 $
+" Id:               $Date: 2016-01-03 14:43:14+09 $
+"                   $Revision: 3.44 $
 "
 " Description:      Set the following line if you do not use a mechanism to
 "                   turn off Auto-indent in lines inside the double-quotes.
@@ -464,9 +464,9 @@ function s:GetTabAndSpaceSum(cline, cind, sstr, sind)
   else
     let tbind = 0
   endif
-  let spind = a:cind - tbind * &sw
+  let spind = a:cind - tbind * &tabstop
   if a:sstr =~ '<<-' && a:sind
-    let tbind = a:sind / &sw
+    let tbind = a:sind / &tabstop
   endif
 
   return [tbind, spind]
@@ -487,13 +487,17 @@ function s:InsideHereDocIndent(snum, lnum, sstr, cline, ind, cind)
   elseif a:lnum > 0 && &expandtab
     let eind = indent(a:lnum)
   endif
-  if a:lnum > v:lnum && !&expandtab && spsum >= &sw
+  if a:lnum > v:lnum && !&expandtab && spsum >= &tabstop
     let [tbind, spind] = s:GetTabAndSpaceSum(a:cline, a:cind, a:sstr, sind)
     let b:sh_indent_tabstop = &tabstop
     let &tabstop = spsum + 1
     let ind = tbind * &tabstop + spind
-  elseif a:lnum >= v:lnum && !&expandtab && spsum < &sw && a:sstr =~ '<<-'
+  elseif a:lnum >= v:lnum && !&expandtab && a:sstr =~ '<<-'
     let [tbind, spind] = s:GetTabAndSpaceSum(a:cline, a:cind, a:sstr, sind)
+    if spind >= &tabstop
+      let b:sh_indent_tabstop = &tabstop
+      let &tabstop = spind + 1
+    endif
     let ind = tbind * &tabstop + spind
   elseif a:lnum >= v:lnum && &expandtab && eind && a:cline =~ '^\t'
     let tbind = matchend(a:cline, '\t*', 0)
